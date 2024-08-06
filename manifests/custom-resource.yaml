@@ -1,0 +1,10 @@
+
+---
+apiVersion: crsm.instrumentation.k8s-sigs.io/v1alpha1
+kind: CustomResourceStateMetricsResource
+metadata:
+  name: custom-resource-state-metrics-resource-sample
+  namespace: default
+spec:
+  customResourceStateMetricsConfiguration: |
+    ...

@@ -1,0 +1,27 @@
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crsm-controller
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: crsm-controller
+  template:
+    metadata:
+      labels:
+        app: crsm-controller
+    spec:
+      nodeSelector:
+        kubernetes.io/os: linux
+      securityContext: {}
+      serviceAccountName: crsm-controller
+      containers:
+      - name: crsm-controller
+        image: "crsm:draft"
+        ports:
+          - containerPort: 8080
+        imagePullPolicy: Always

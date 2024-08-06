@@ -1,0 +1,7 @@
+
+approvers:
+  - sig-instrumentation-approvers
+reviewers:
+  - sig-instrumentation-members
+labels:
+  - sig/instrumentation
