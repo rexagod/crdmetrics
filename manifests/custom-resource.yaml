@@ -6,5 +6,4 @@ metadata:
   name: custom-resource-state-metrics-resource-sample
   namespace: default
 spec:
-  customResourceStateMetricsConfiguration: |
-    ...
+  customResourceStateMetricsConfiguration: "apps/v1,Deployment,spec.replicas"

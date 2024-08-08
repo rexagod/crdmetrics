@@ -21,6 +21,7 @@ MD_FILES = $(shell find . \( -type d -name 'vendor' -o -type d -name $(patsubst 
 OS ?= $(shell uname -s | tr '[:upper:]' '[:lower:]')
 PROJECT_NAME = crsm
 RUNNER = $(shell id -u -n)@$(shell hostname)
+V ?= 4
 VALE ?= $(ASSETS_DIR)vale
 VALE_ARCH ?= $(if $(filter $(shell uname -m),arm64),macOS_arm64,Linux_64-bit)
 VALE_VERSION ?= 3.1.0
@@ -104,7 +105,7 @@ apply: manifests
 .PHONY: local
 local: manifests codegen $(PROJECT_NAME) # apply
 	@kubectl scale deployment $(PROJECT_NAME)-controller --replicas=0 -n $(LOCAL_NAMESPACE) 2>/dev/null || true
-	@./$(PROJECT_NAME) -v=4 -kubeconfig $(KUBECONFIG)
+	@./$(PROJECT_NAME) -v=$(V) -kubeconfig $(KUBECONFIG)
 
 ###########
 # Testing #

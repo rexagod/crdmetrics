@@ -3,9 +3,15 @@ package internal
 import (
 	"context"
 	"fmt"
+	"os"
+	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
@@ -13,29 +19,19 @@ import (
 	clientset "github.com/rexagod/crsm/pkg/generated/clientset/versioned"
 )
 
-type Event int
+type eventType int
 
 const (
-	AddEvent Event = iota
+	AddEvent eventType = iota
 	UpdateEvent
 	DeleteEvent
 )
 
-func (e Event) String() string {
+func (e eventType) String() string {
 	return []string{"AddEvent", "UpdateEvent", "DeleteEvent"}[e]
 }
 
-// crsmEventHandler implements the eventHandler interface.
-var _ eventHandler = &crsmEventHandler{}
-
-// eventHandler knows how to handle informer events.
-type eventHandler interface {
-
-	// HandleEvent handles events received from the informer.
-	HandleEvent(ctx context.Context, o metav1.Object, event string) error
-}
-
-// crsmEventHandler implements the EventHandler interface.
+// crsmEventHandler knows how to handle CRSM events.
 type crsmEventHandler struct {
 
 	// namespace is the namespace of the crsm resource.
@@ -43,10 +39,15 @@ type crsmEventHandler struct {
 
 	// clientset is the clientset used to update the status of the crsm resource.
 	clientset clientset.Interface
+
+	// crsmrStoresMap is the handler's internal cache of crsmr objects mapped to the stores they are linked to.
+	// When a CRSMR is added or updated, the cache will be populated with that object's stores. Similarly,
+	// when a CRSMR is deleted, the cache will be purged of that object's stores.
+	crsmrStoresMap map[types.UID][]Store
 }
 
 // HandleEvent handles events received from the informer.
-func (h *crsmEventHandler) HandleEvent(ctx context.Context, o metav1.Object, event string) error {
+func (h *crsmEventHandler) handleEvent(ctx context.Context, dynamicClientset dynamic.Interface, o metav1.Object, event string) error {
 	logger := klog.LoggerWithValues(klog.FromContext(ctx), "key", klog.KObj(o), "event", event)
 
 	resource, ok := o.(*v1alpha1.CustomResourceStateMetricsResource)
@@ -63,13 +64,44 @@ func (h *crsmEventHandler) HandleEvent(ctx context.Context, o metav1.Object, eve
 	// Handle the event.
 	switch event {
 
-	// Generate metrics.
-	case AddEvent.String():
-		logger.V(4).Info("foo")
-
 	// Refresh metrics.
-	case UpdateEvent.String():
-		logger.V(4).Info("bar")
+	case AddEvent.String(), UpdateEvent.String():
+		store, err := buildStore(
+			ctx,
+			dynamicClientset,
+			&unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": "contoso.com/v1alpha1",
+					"kind":       "MyPlatform",
+				},
+			},
+			[]*familyGenerator{
+				newFamilyGenerator(
+					"foo_metric",
+					"foo_help",
+					"gauge",
+					func(i interface{}) *family {
+						iA, err := meta.Accessor(i)
+						if err != nil {
+							fmt.Println(err)
+							return nil
+						}
+						return &family{
+							metrics: []*metric{
+								{
+									Keys:   []string{"foo"},
+									Values: []string{iA.GetName()},
+									Value:  2.0,
+								},
+							},
+						}
+					})},
+			false, "", "")
+		if err != nil {
+			return err
+		}
+		time.Sleep(5 * time.Second)
+		newMetricsWriter(store).writeAllTo(os.Stdout)
 
 	// Drop metrics.
 	case DeleteEvent.String():

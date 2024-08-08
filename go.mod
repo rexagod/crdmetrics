@@ -4,6 +4,7 @@ go 1.21
 
 require (
 	github.com/davecgh/go-spew v1.1.1
+	github.com/gobuffalo/flect v1.0.2
 	github.com/prometheus/common v0.48.0
 	golang.org/x/time v0.3.0
 	k8s.io/api v0.28.4

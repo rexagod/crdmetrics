@@ -25,6 +25,8 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 
+	"k8s.io/client-go/dynamic"
+
 	"github.com/rexagod/crsm/internal"
 	v "github.com/rexagod/crsm/internal/version"
 	clientset "github.com/rexagod/crsm/pkg/generated/clientset/versioned"
@@ -69,9 +71,14 @@ func main() {
 		logger.Error(err, "Error building crsm clientset")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
+	dynamicClientset, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		logger.Error(err, "Error building dynamic clientset")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
+	}
 
 	// Start the controller.
-	if err = internal.NewController(ctx, kubeClientset, crsmClientset).Run(ctx, workers); err != nil {
+	if err = internal.NewController(ctx, kubeClientset, crsmClientset, dynamicClientset).Run(ctx, workers); err != nil {
 		logger.Error(err, "Error running controller")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}

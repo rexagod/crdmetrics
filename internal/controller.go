@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"golang.org/x/time/rate"
+	"k8s.io/client-go/dynamic"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -56,6 +57,9 @@ type Controller struct {
 	// crsmClientset is a clientset for our own API group.
 	crsmClientset clientset.Interface
 
+	// dynamicClientset is a clientset for CRD operations.
+	dynamicClientset dynamic.Interface
+
 	// crsmInformerFactory is a shared informer factory for crsm resources.
 	crsmInformerFactory informers.SharedInformerFactory
 
@@ -64,12 +68,12 @@ type Controller struct {
 	// makes it easy to ensure we are never processing the same item simultaneously in two different workers.
 	workqueue workqueue.RateLimitingInterface
 
-	// recorder is an event recorder for recording Event resources to the Kubernetes API.
+	// recorder is an event recorder for recording event resources.
 	recorder record.EventRecorder
 }
 
 // NewController returns a new sample controller.
-func NewController(ctx context.Context, kubeClientset kubernetes.Interface, crsmClientset clientset.Interface) *Controller {
+func NewController(ctx context.Context, kubeClientset kubernetes.Interface, crsmClientset clientset.Interface, dynamicClientset dynamic.Interface) *Controller {
 
 	// Add native resources to the default Kubernetes Scheme so Events can be logged for them.
 	utilruntime.Must(crsmscheme.AddToScheme(scheme.Scheme))
@@ -95,6 +99,7 @@ func NewController(ctx context.Context, kubeClientset kubernetes.Interface, crsm
 	controller := &Controller{
 		kubeclientset:       kubeClientset,
 		crsmClientset:       crsmClientset,
+		dynamicClientset:    dynamicClientset,
 		crsmInformerFactory: informers.NewSharedInformerFactory(crsmClientset, 0),
 		workqueue:           workqueue.NewRateLimitingQueue(ratelimiter),
 		recorder:            recorder,
@@ -124,7 +129,7 @@ func NewController(ctx context.Context, kubeClientset kubernetes.Interface, crsm
 }
 
 // enqueueCRSMResource takes a CustomResourceStateMetricsResource resource and converts it into a namespace/name key.
-func (c *Controller) enqueueCRSMResource(obj interface{}, event Event) {
+func (c *Controller) enqueueCRSMResource(obj interface{}, event eventType) {
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -173,31 +178,31 @@ func (c *Controller) processNextWorkItem(ctx context.Context) bool {
 	logger := klog.FromContext(ctx)
 
 	// Retrieve the next item from the queue.
-	objWithEventInterface, shutdown := c.workqueue.Get()
-	objWithEvent := objWithEventInterface.([2]string)
+	objectWithEventInterface, shutdown := c.workqueue.Get()
+	objectWithEvent := objectWithEventInterface.([2]string)
 	if shutdown {
 		return false
 	}
 
 	// Wrap this block in a func, so we can defer c.workqueue.Done. Forget the item if its invalid or processed.
-	err := func(objWithEvent [2]string) error {
-		defer c.workqueue.Done(objWithEvent)
-		key := objWithEvent[0]
-		event := objWithEvent[1]
+	err := func(objectWithEvent [2]string) error {
+		defer c.workqueue.Done(objectWithEvent)
+		key := objectWithEvent[0]
+		event := objectWithEvent[1]
 		if err := c.syncHandler(ctx, key, event); err != nil {
 
 			// Put the item back on the workqueue to handle any transient errors.
-			c.workqueue.AddRateLimited(objWithEvent)
+			c.workqueue.AddRateLimited(objectWithEvent)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
 
 		// Finally, if no error occurs we Forget this item, so it does not
 		// get queued again until another change happens. Done has no effect
 		// after Forget, so we must call it before.
-		c.workqueue.Forget(objWithEvent)
+		c.workqueue.Forget(objectWithEvent)
 		logger.V(1).Info("Synced", "key", key)
 		return nil
-	}(objWithEvent)
+	}(objectWithEvent)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return true
@@ -275,7 +280,7 @@ func (c *Controller) handleObject(ctx context.Context, obj interface{}, event st
 			namespace: object.GetNamespace(),
 			clientset: c.crsmClientset,
 		}
-		return handler.HandleEvent(ctx, o, event)
+		return handler.handleEvent(ctx, c.dynamicClientset, o, event)
 	default:
 		utilruntime.HandleError(fmt.Errorf("unknown object type: %T, full schema below:\n%s", o, spew.Sdump(obj)))
 	}
