@@ -17,7 +17,43 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"fmt"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/strings/slices"
+)
+
+const (
+
+	// ConditionTypeProcessed represents the condition type for a resource that has been processed successfully.
+	ConditionTypeProcessed = iota
+
+	// ConditionTypeFailed represents the condition type for resource that has failed to process further.
+	ConditionTypeFailed
+)
+
+var (
+
+	// ConditionType is a slice of strings representing the condition types.
+	ConditionType = []string{"Processed", "Failed"}
+
+	// ConditionMessageTrue is a group of condition messages applicable when the associated condition status is true.
+	ConditionMessageTrue = []string{
+		"Resource configuration has been processed successfully",
+		"Resource failed to process",
+	}
+
+	// ConditionMessageFalse is a group of condition messages applicable when the associated condition status is false.
+	ConditionMessageFalse = []string{
+		"Resource configuration is yet to be processed",
+		"N/A",
+	}
+
+	// ConditionReasonTrue is a group of condition reasons applicable when the associated condition status is true.
+	ConditionReasonTrue = []string{"EventHandlerSucceeded", "EventHandlerFailed"}
+
+	// ConditionReasonFalse is a group of condition reasons applicable when the associated condition status is false.
+	ConditionReasonFalse = []string{"EventHandlerRunning", "N/A"}
 )
 
 // +genclient
@@ -38,11 +74,12 @@ type CustomResourceStateMetricsResource struct {
 // CustomResourceStateMetricsResourceSpec is the spec for a CustomResourceStateMetricsResource resource.
 type CustomResourceStateMetricsResourceSpec struct {
 
-	// +kubebuilder:validation:Optional
-	// +optional
+	// +kubebuilder:validation:Format=string
+	// +kubebuilder:validation:Required
+	// +required
 
-	// Configuration is the CEL configuration that generates metrics.
-	Configuration string `json:"customResourceStateMetricsConfiguration"`
+	// ConfigurationYAML is the CRSMR configuration that generates metrics.
+	ConfigurationYAML string `json:"customResourceStateMetricsConfigurationYAML"`
 }
 
 // +kubebuilder:validation:Optional
@@ -55,11 +92,45 @@ type CustomResourceStateMetricsResourceStatus struct {
 	// +patchStrategy=merge
 	// +listType=map
 	// +listMapKey=type
-	// +kubebuilder:validation:Optional
-	// +optional
 
 	// Conditions is an array of conditions associated with the resource.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// Set sets the given condition for the resource.
+func (status *CustomResourceStateMetricsResourceStatus) Set(
+	resource *CustomResourceStateMetricsResource,
+	condition metav1.Condition,
+) {
+
+	// Prefix condition messages with consistent hints.
+	var message, reason string
+	conditionTypeNumeric := slices.Index(ConditionType, condition.Type)
+	if condition.Status == metav1.ConditionTrue {
+		reason = ConditionReasonTrue[conditionTypeNumeric]
+		message = ConditionMessageTrue[conditionTypeNumeric]
+	} else {
+		reason = ConditionReasonFalse[conditionTypeNumeric]
+		message = ConditionMessageFalse[conditionTypeNumeric]
+	}
+
+	// Populate status fields.
+	condition.Reason = reason
+	condition.Message = fmt.Sprintf("%s: %s", message, condition.Message)
+	condition.LastTransitionTime = metav1.Now()
+	condition.ObservedGeneration = resource.GetGeneration()
+
+	// Check if the condition already exists.
+	for i, existingCondition := range status.Conditions {
+		if existingCondition.Type == condition.Type {
+			// Update the existing condition.
+			status.Conditions[i] = condition
+			return
+		}
+	}
+
+	// Append the new condition if it does not exist (+listMapKey=type).
+	status.Conditions = append(status.Conditions, condition)
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

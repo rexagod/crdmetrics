@@ -3,7 +3,6 @@ package internal
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -13,35 +12,27 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-
-	"github.com/gobuffalo/flect"
 )
 
-// buildStore builds a cache.Store for the metrics store.
+// gvkr holds the GVK/R information for the custom resource that the store is built for.
+type gvkr struct {
+	schema.GroupVersionKind
+	schema.GroupVersionResource
+}
+
+// buildStore builds a cache.store for the metrics store.
 func buildStore(
 	ctx context.Context,
 	dynamicClientset dynamic.Interface,
-	expectedType interface{},
-	familyGenerators []*familyGenerator,
-	tryNoCache bool, // Retrieved from options.
-	labelSelector, fieldSelector string, // Retrieved from the configuration.
-) (*Store, error) {
+	gvkWithR gvkr,
+	metricFamilies []*FamilyType,
+	tryNoCache bool,
+	labelSelector, fieldSelector string,
+) *StoreType {
 	logger := klog.FromContext(ctx)
 
 	// Create the reflector's LW.
-	// NOTE: We generateFamily resource strings the same way as Kubebuilder (and KSM), using `flect`.
-	apiVersionString := expectedType.(*unstructured.Unstructured).Object["apiVersion"].(string)
-	expectedTypeSlice := strings.Split(apiVersionString, "/")
-	g, v := expectedTypeSlice[0], expectedTypeSlice[1]
-	if len(expectedTypeSlice) == 1 {
-		g, v = "", expectedTypeSlice[0]
-	}
-	k := expectedType.(*unstructured.Unstructured).Object["kind"].(string)
-	gvr := schema.GroupVersionResource{
-		Group:    g,
-		Version:  v,
-		Resource: strings.ToLower(flect.Pluralize(k)),
-	}
+	gvr := gvkWithR.GroupVersionResource
 	lwo := metav1.ListOptions{
 		LabelSelector: labelSelector,
 		FieldSelector: fieldSelector,
@@ -52,36 +43,29 @@ func buildStore(
 		lwo.ResourceVersion = resourceVersionLatestBestEffort
 	}
 	lw := &cache.ListWatch{
-		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-			options = lwo
-			return dynamicClientset.Resource(gvr).List(ctx, options)
+		ListFunc: func(_ metav1.ListOptions) (runtime.Object, error) {
+			return dynamicClientset.Resource(gvr).List(ctx, lwo)
 		},
-		WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-			options = lwo
-			return dynamicClientset.Resource(gvr).Watch(ctx, options)
+		WatchFunc: func(_ metav1.ListOptions) (watch.Interface, error) {
+			return dynamicClientset.Resource(gvr).Watch(ctx, lwo)
 		},
 	}
 
-	// Create the reflector's store.
-	headers := make([]string, len(familyGenerators))
-	for i, fg := range familyGenerators {
-		headers[i] = fg.generateHeaderString()
+	// Create the reflector's StoreType.
+	headers := make([]string, len(metricFamilies))
+	for i, f := range metricFamilies {
+		headers[i] = f.buildHeaders()
 	}
-	metricFamiliesGenerator := func(object interface{}) []*family {
-		families := make([]*family, len(familyGenerators))
-		for i, fg := range familyGenerators {
-			families[i] = fg.generateFamily(object)
-		}
-		return families
-	}
-	store := newStore(logger, headers, metricFamiliesGenerator)
+	s := newStore(logger, headers, metricFamilies)
 
 	// Create and start the reflector.
-	reflector := cache.NewReflectorWithOptions(lw, expectedType, store, cache.ReflectorOptions{
-		Name: fmt.Sprintf("%#q reflector", gvr.String()),
-		// TypeDescription is inferred from the *unstructured.Unstructured object's `apiVersion` and `kind` fields.
-		ResyncPeriod: 0})
+	wrapper := &unstructured.Unstructured{}
+	wrapper.SetGroupVersionKind(gvkWithR.GroupVersionKind)
+	reflector := cache.NewReflectorWithOptions(lw, wrapper, s, cache.ReflectorOptions{
+		Name:         fmt.Sprintf("%#q reflector", gvr.String()),
+		ResyncPeriod: 0,
+	})
 	go reflector.Run(ctx.Done())
 
-	return store, nil
+	return s
 }

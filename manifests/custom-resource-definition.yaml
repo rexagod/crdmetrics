@@ -43,10 +43,13 @@ spec:
             description: CustomResourceStateMetricsResourceSpec is the spec for a
               CustomResourceStateMetricsResource resource.
             properties:
-              customResourceStateMetricsConfiguration:
-                description: Configuration is the CEL configuration that generates
+              customResourceStateMetricsConfigurationYAML:
+                description: ConfigurationYAML is the CRSMR configuration that generates
                   metrics.
+                format: string
                 type: string
+            required:
+            - customResourceStateMetricsConfigurationYAML
             type: object
           status:
             description: CustomResourceStateMetricsResourceStatus is the status for

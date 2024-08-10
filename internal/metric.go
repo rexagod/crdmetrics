@@ -2,34 +2,35 @@ package internal
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
-// metric represents a single time series.
-type metric struct {
+// MetricType represents a single time series.
+type MetricType struct {
 
-	// Keys is the set of label keys.
-	Keys []string
+	// LabelKeys is the set of label keys.
+	LabelKeys []string `yaml:"labelKeys"`
 
-	// Values is the set of label values.
-	Values []string
+	// LabelValues is the set of label values.
+	LabelValues []string `yaml:"labelValues"`
 
-	// Value is the metric value.
-	Value float64
+	// Value is the metric Value.
+	Value string `yaml:"value"`
 }
 
 // writeTo writes the given metric to the given strings.Builder.
-func (m metric) writeTo(s *strings.Builder) error {
-	if len(m.Keys) != len(m.Values) {
-		return fmt.Errorf("expected labelKeys %q to be of same length (%d) as labelValues %q (%d)", m.Keys, len(m.Keys), m.Values, len(m.Values))
+func (m MetricType) writeTo(s *strings.Builder) error {
+	if len(m.LabelKeys) != len(m.LabelValues) {
+		return fmt.Errorf("expected labelKeys %q to be of same length (%d) as labelValues %q (%d)", m.LabelKeys, len(m.LabelKeys), m.LabelValues, len(m.LabelValues))
 	}
-	if len(m.Keys) > 0 {
+	if len(m.LabelKeys) > 0 {
 		var separator byte = '{'
-		for i := 0; i < len(m.Keys); i++ {
+		for i := 0; i < len(m.LabelKeys); i++ {
 			s.WriteByte(separator)
-			s.WriteString(m.Keys[i])
+			s.WriteString(m.LabelKeys[i])
 			s.WriteString("=\"")
-			n, err := strings.NewReplacer("\\", `\\`, "\n", `\n`, "\"", `\"`).WriteString(s, m.Values[i])
+			n, err := strings.NewReplacer("\\", `\\`, "\n", `\n`, "\"", `\"`).WriteString(s, m.LabelValues[i])
 			if err != nil {
 				return fmt.Errorf("error writing metric after %d bytes: %w", n, err)
 			}
@@ -39,7 +40,11 @@ func (m metric) writeTo(s *strings.Builder) error {
 		s.WriteByte('}')
 	}
 	s.WriteByte(' ')
-	n, err := fmt.Fprintf(s, "%f", m.Value)
+	metricValueAsFloat, err := strconv.ParseFloat(m.Value, 64)
+	if err != nil {
+		return fmt.Errorf("error parsing metric value %q as float64: %w", m.Value, err)
+	}
+	n, err := fmt.Fprintf(s, "%f", metricValueAsFloat)
 	if err != nil {
 		return fmt.Errorf("error writing (float64) metric value after %d bytes: %w", n, err)
 	}

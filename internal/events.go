@@ -3,15 +3,23 @@ package internal
 import (
 	"context"
 	"fmt"
+	"os"
+	"reflect"
+	"regexp"
+	"strings"
+	"time"
 
-	"k8s.io/apimachinery/pkg/api/meta"
+	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 
+	"github.com/rexagod/crsm/internal/version"
 	"github.com/rexagod/crsm/pkg/apis/crsm/v1alpha1"
 	clientset "github.com/rexagod/crsm/pkg/generated/clientset/versioned"
 )
@@ -20,81 +28,247 @@ import (
 type eventType int
 
 const (
-	AddEvent eventType = iota
-	UpdateEvent
-	DeleteEvent
+	addEvent eventType = iota
+	updateEvent
+	deleteEvent
 )
 
 func (e eventType) String() string {
-	return []string{"AddEvent", "UpdateEvent", "DeleteEvent"}[e]
+	return []string{"addEvent", "updateEvent", "deleteEvent"}[e]
 }
 
 // crsmHandler knows how to handle CRSM events.
 type crsmHandler struct {
 
-	// clientset is the clientset used to update the status of the CRSM resource.
-	clientset clientset.Interface
+	// kubeClientset is the clientset used to interact with the Kubernetes API.
+	kubeClientset kubernetes.Interface
+
+	// crsmClientset is the clientset used to update the status of the CRSM resource.
+	crsmClientset clientset.Interface
 
 	// dynamicClientset is the dynamic clientset used to build stores for different objects.
 	dynamicClientset dynamic.Interface
 }
 
 // newCRSMHandler creates a new crsmHandler.
-func newCRSMHandler(clientset clientset.Interface, dynamicClientset dynamic.Interface) *crsmHandler {
+func newCRSMHandler(kubeClientset kubernetes.Interface, crsmClientset clientset.Interface, dynamicClientset dynamic.Interface) *crsmHandler {
 	return &crsmHandler{
-		clientset:        clientset,
+		kubeClientset:    kubeClientset,
+		crsmClientset:    crsmClientset,
 		dynamicClientset: dynamicClientset,
 	}
 }
 
 // HandleEvent handles events received from the informer.
-func (h *crsmHandler) handleEvent(ctx context.Context, crsmUIDToStoresMap map[types.UID][]*Store, event string, o metav1.Object) error {
+func (h *crsmHandler) handleEvent(
+	ctx context.Context,
+	crsmUIDToStoresMap map[types.UID][]*StoreType,
+	event string,
+	o metav1.Object,
+	tryNoCache bool,
+) error {
+	logger := klog.FromContext(ctx)
 
+	// Resolve the object type.
 	resource, ok := o.(*v1alpha1.CustomResourceStateMetricsResource)
 	if !ok {
-		utilruntime.HandleError(fmt.Errorf("failed to cast object to %s", resource.GetObjectKind()))
+		logger.Error(fmt.Errorf("failed to cast object to %s", resource.GetObjectKind()), "cannot handle event")
 		return nil // Do not requeue.
 	}
-	key, err := cache.MetaNamespaceKeyFunc(resource)
+	kObj := klog.KObj(resource).String()
+
+	// Preemptively update the resource metadata. We poll here to avoid same resource versions across update bursts.
+	err := wait.PollUntilContextTimeout(ctx, time.Second, time.Minute, false, func(context.Context) (
+		bool,
+		error,
+	) {
+		gotResource, err := h.crsmClientset.CrsmV1alpha1().CustomResourceStateMetricsResources(resource.GetNamespace()).
+			Get(ctx, resource.GetName(), metav1.GetOptions{})
+		if err != nil {
+			return false, fmt.Errorf("failed to get %s: %w", kObj, err)
+		}
+		resource = gotResource.DeepCopy() // Ensure we are working with the latest resourceVersion.
+
+		// Add relevant metadata information to the resource.
+		// Build relevant labels.
+		if resource.Labels == nil {
+			resource.Labels = make(map[string]string)
+		}
+		controllerNameSanitized := strings.ReplaceAll(version.ControllerName, "_", "-")
+		resource.Labels["app.kubernetes.io/managed-by"] = controllerNameSanitized
+		revisionSHA := regexp.MustCompile(`revision:\s*(\S+)\)`).FindStringSubmatch(version.Version())
+		if len(revisionSHA) > 1 {
+			resource.Labels["app.kubernetes.io/version"] = revisionSHA[1]
+		} else {
+			logger.Error(fmt.Errorf("failed to get revision SHA, continuing anyway"), "cannot set version label")
+		}
+
+		// Set up CR GC.
+		namespace, found := os.LookupEnv("POD_NAMESPACE")
+		if found {
+			ownerRef, err2 := h.kubeClientset.AppsV1().Deployments(namespace).Get(ctx, controllerNameSanitized, metav1.GetOptions{})
+			if err2 != nil {
+				return false, fmt.Errorf("failed to get owner reference: %w", err)
+			}
+			resource.SetOwnerReferences([]metav1.OwnerReference{
+				{
+					// Use apps/v1 API for the Deployment GVK since it's not populated.
+					APIVersion:         appsv1.SchemeGroupVersion.String(),
+					Kind:               "Deployment",
+					Name:               ownerRef.GetName(),
+					UID:                ownerRef.GetUID(),
+					Controller:         ptr.To(true),
+					BlockOwnerDeletion: ptr.To(false), // Allow removing the CR without removing the controller.
+				},
+			})
+		} else {
+			logger.Error(fmt.Errorf("failed to get namespace, continuing anyway"), "cannot set ownerReference")
+		}
+
+		// Compare resource with the fetched resource.
+		if !reflect.DeepEqual(gotResource.GetLabels(), resource.GetLabels()) ||
+			!reflect.DeepEqual(gotResource.GetOwnerReferences(), resource.GetOwnerReferences()) {
+			resource, err = h.crsmClientset.CrsmV1alpha1().CustomResourceStateMetricsResources(resource.GetNamespace()).
+				Update(ctx, resource, metav1.UpdateOptions{})
+			if err != nil {
+				return false, fmt.Errorf("failed to update %s: %w", kObj, err)
+			}
+		}
+
+		return true, nil
+	})
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("failed to get key for %s %s/%s: %w", resource.GetObjectKind(), resource.GetNamespace(), resource.GetName(), err))
+		logger.Error(fmt.Errorf("failed to preemptively update %s: %w", kObj, err), "cannot handle event")
 		return nil // Do not requeue.
+	}
+
+	// Update resource status.
+	resource, err = h.emitSuccessOnResource(
+		ctx, kObj,
+		resource,
+		metav1.ConditionFalse,
+		fmt.Sprintf("Event handler is yet to process event: %s", event),
+	)
+	if err != nil {
+		logger.Error(fmt.Errorf("failed to emit success on %s: %w", kObj, err), "cannot update the resource")
+		return nil // Do not requeue.
+	}
+
+	// Process the fetched configuration.
+	configurationYAML := resource.Spec.ConfigurationYAML
+	if configurationYAML == "" {
+
+		// This should never happen owing to the Kubebuilder check in place.
+		logger.Error(fmt.Errorf("configuration YAML is empty"), "cannot process the resource")
+		h.emitFailureOnResource(ctx, kObj, resource, "Configuration YAML is empty")
+		return nil
+	}
+	configurerInstance := newConfigurer(ctx, h.dynamicClientset, resource)
+
+	// Choose a configurer.
+	var activeConfigurer configure
+	switch strings.ToLower(configurerInstance.configuration.T) {
+	case configTypes[configTypeCEL], "":
+		activeConfigurer = configurerInstance
+	default:
+		logger.Error(fmt.Errorf("unknown configuration type (%s)", configurerInstance.configuration.T), "cannot process the resource")
+		h.emitFailureOnResource(ctx, kObj, resource, fmt.Sprintf("Unknown configuration type: %s", configurerInstance.configuration.T))
+		return nil
 	}
 
 	// Handle the event.
 	switch event {
 
 	// Build all associated stores.
-	case AddEvent.String(), UpdateEvent.String():
-		// TODO: Once the CEL configuration support is added, the family generators should be created based on the it.
-		// The snippet below is purely for development purposes.
-		store, _ := buildStore(ctx, h.dynamicClientset, &unstructured.Unstructured{Object: map[string]interface{}{
-			"apiVersion": "contoso.com/v1alpha1",
-			"kind":       "MyPlatform"}},
-			[]*familyGenerator{newFamilyGenerator("foo_metric", "foo_help", "gauge",
-				func(i interface{} /* *unstructured.Unstructured */) *family {
-					iA, err := meta.Accessor(i)
-					if err != nil {
-						return nil
-					}
-					return &family{metrics: []*metric{{Keys: []string{"foo"}, Values: []string{iA.GetName()}, Value: 2.0}}}
-				})}, false, "", "")
-
-		resourceUID := resource.GetUID()
-		store.crsmrUID = resourceUID
-		crsmUIDToStoresMap[resourceUID] = append(crsmUIDToStoresMap[resourceUID], store)
+	case addEvent.String(), updateEvent.String():
+		err = activeConfigurer.parse(configurationYAML)
+		if err != nil {
+			logger.Error(fmt.Errorf("failed to parse configuration YAML: %w", err), "cannot process the resource")
+			h.emitFailureOnResource(ctx, kObj, resource, fmt.Sprintf("Failed to parse configuration YAML: %s", err))
+			return nil
+		}
+		activeConfigurer.build(crsmUIDToStoresMap, tryNoCache)
 
 	// Drop all associated stores.
-	case DeleteEvent.String():
-		crsmrUID := resource.GetUID()
-		if _, ok := crsmUIDToStoresMap[crsmrUID]; ok {
+	case deleteEvent.String():
+		resourceUID := resource.GetUID()
+		if _, ok = crsmUIDToStoresMap[resourceUID]; ok {
+
 			// The associated stores are only reachable through the map. Deleting them will trigger the GC.
-			delete(crsmUIDToStoresMap, crsmrUID)
+			delete(crsmUIDToStoresMap, resourceUID)
 		}
 
+	// This should never happen.
 	default:
-		utilruntime.HandleError(fmt.Errorf("unknown event type (%s) for %s", event, key))
+		logger.Error(fmt.Errorf("unknown event type (%s)", event), "cannot process the resource")
+		h.emitFailureOnResource(ctx, kObj, resource, fmt.Sprintf("Unknown event type: %s", event))
+		return nil
+	}
+
+	// Update the status of the resource.
+	_, err = h.emitSuccessOnResource(
+		ctx, kObj,
+		resource,
+		metav1.ConditionTrue,
+		fmt.Sprintf("Event handler successfully processed event: %s", event),
+	)
+	if err != nil {
+		logger.Error(fmt.Errorf("failed to emit success on %s: %w", kObj, err), "cannot update the resource")
+		return nil // Do not requeue.
 	}
 
 	return nil
+}
+
+// emitSuccessOnResource emits a success condition on the given resource.
+func (h *crsmHandler) emitSuccessOnResource(
+	ctx context.Context,
+	kObj string,
+	gotResource *v1alpha1.CustomResourceStateMetricsResource,
+	conditionBool metav1.ConditionStatus,
+	message string,
+) (*v1alpha1.CustomResourceStateMetricsResource, error) {
+	resource, err := h.crsmClientset.CrsmV1alpha1().CustomResourceStateMetricsResources(gotResource.GetNamespace()).
+		Get(ctx, gotResource.GetName(), metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get %s: %w", kObj, err)
+	}
+	resource.Status.Set(resource, metav1.Condition{
+		Type:    v1alpha1.ConditionType[v1alpha1.ConditionTypeProcessed],
+		Status:  conditionBool,
+		Message: message,
+	})
+	resource, err = h.crsmClientset.CrsmV1alpha1().CustomResourceStateMetricsResources(resource.GetNamespace()).
+		UpdateStatus(ctx, resource, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update the status of %s: %w", kObj, err)
+	}
+
+	return resource, err
+}
+
+// emitFailureOnResource emits a failure condition on the given resource.
+func (h *crsmHandler) emitFailureOnResource(
+	ctx context.Context,
+	kObj string,
+	gotResource *v1alpha1.CustomResourceStateMetricsResource,
+	message string,
+) /* Don't return the most recent resource since this call should always precede an empty return. */ {
+	resource, err := h.crsmClientset.CrsmV1alpha1().CustomResourceStateMetricsResources(gotResource.GetNamespace()).
+		Get(ctx, gotResource.GetName(), metav1.GetOptions{})
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to get %s: %w", kObj, err))
+		return
+	}
+	resource.Status.Set(resource, metav1.Condition{
+		Type:    v1alpha1.ConditionType[v1alpha1.ConditionTypeFailed],
+		Status:  metav1.ConditionTrue,
+		Message: message,
+	})
+	_, err = h.crsmClientset.CrsmV1alpha1().CustomResourceStateMetricsResources(resource.GetNamespace()).
+		UpdateStatus(ctx, resource, metav1.UpdateOptions{})
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to emit failure on %s: %w", kObj, err))
+		return
+	}
 }

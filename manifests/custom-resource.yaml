@@ -6,4 +6,59 @@ metadata:
   name: custom-resource-state-metrics-resource-sample
   namespace: default
 spec:
-  customResourceStateMetricsConfiguration: "apps/v1,Deployment,spec.replicas"
+  customResourceStateMetricsConfigurationYAML: |-
+    type: cel
+    stores:
+      - g: "contoso.com"
+        v: "v1alpha1"
+        k: "MyPlatform"
+        r: "myplatforms"
+        selectors:
+          field: "metadata.namespace=default"
+        families:
+          - name: "platform_info"
+            help: "Information about each MyPlatform instance"
+            metrics:
+              - labelKeys: 
+                  - "name"
+                labelValues:
+                  - "TODO: CEL expression"
+                value: 1
+              - labelKeys: 
+                  - "environmentType"
+                  - "language"
+                labelValues:
+                  - "TODO: CEL expression"
+                  - "TODO: CEL expression"
+                value: 1
+          - name: "platform_replicas"
+            help: "Number of replicas for each MyPlatform instance"
+            metrics:
+              - labelKeys: 
+                  - "name"
+                labelValues:
+                  - "TODO: CEL expression"
+                value: "0"
+      - g: "samplecontroller.k8s.io"
+        v: "v1alpha1"
+        k: "Foo"
+        r: "foos"
+        selectors:
+          label: "app.kubernetes.io/part-of=sample-controller"
+        families:
+          - name: "foos_info"
+            help: "Information about each Foo instance"
+            metrics:
+              - labelKeys: 
+                  - "name"
+                labelValues:
+                  - "TODO: CEL expression"
+                value: 1
+          - name: "foo_replicas"
+            help: "Number of replicas for each Foo instance"
+            metrics:
+              - labelKeys: 
+                  - "name"
+                labelValues:
+                  - "TODO: CEL expression"
+                value: "0"

@@ -9,7 +9,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-// probe represents a health probe.
+// probe defines behaviours for a health-check probe.
 type probe interface {
 
 	// getSource returns the originating server for the probe.

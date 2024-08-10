@@ -39,9 +39,7 @@ setup-dependencies:
 	@wget https://github.com/errata-ai/vale/releases/download/v$(VALE_VERSION)/vale_$(VALE_VERSION)_$(VALE_ARCH).tar.gz && \
 	mkdir -p assets && tar -xvzf vale_$(VALE_VERSION)_$(VALE_ARCH).tar.gz -C $(ASSETS_DIR) && \
 	rm vale_$(VALE_VERSION)_$(VALE_ARCH).tar.gz && \
-	chmod +x $(VALE) && \
-	mkdir -p /tmp/.vale/styles && \
-	$(ASSETS_DIR)vale sync
+	chmod +x $(VALE)
 	# Setup markdownfmt.
 	@GOOS=$(OS) GOARCH=$(ARCH) $(GO) install github.com/Kunde21/markdownfmt/v3/cmd/markdownfmt@$(MARKDOWNFMT_VERSION)
 	# Setup golangci-lint.
@@ -98,12 +96,22 @@ load: image
 
 .PHONY: apply
 apply: manifests
-	@# Ensure the CRD is deployed before the CR.
+	# Deleting manifests/
+	@kubectl delete -f manifests/ || true
+	# Applying manifests/
 	@kubectl apply -f manifests/custom-resource-definition.yaml && \
 	kubectl apply -f manifests/
 
+.PHONY: apply-testdata
+apply-testdata:
+	# Deleting testdata/
+	@kubectl delete -Rf testdata || true
+	# Applying testdata/
+	@kubectl apply -f testdata/custom-resource-definition/ && \
+	kubectl apply -f testdata/custom-resource/
+
 .PHONY: local
-local: manifests codegen $(PROJECT_NAME) # apply
+local: vet manifests codegen $(PROJECT_NAME)
 	@kubectl scale deployment $(PROJECT_NAME)-controller --replicas=0 -n $(LOCAL_NAMESPACE) 2>/dev/null || true
 	@./$(PROJECT_NAME) -v=$(V) -kubeconfig $(KUBECONFIG)
 
@@ -122,12 +130,17 @@ test: test-unit
 # Linting #
 ###########
 
+.PHONY: vet
+vet:
+	@$(GO) vet ./...
+
 .PHONY: clean
 clean:
 	@git clean -fxd
 
 vale: .vale.ini $(MD_FILES)
-	@$(ASSETS_DIR)vale $(MD_FILES)
+	@$(ASSETS_DIR)vale sync && \
+	$(ASSETS_DIR)vale $(MD_FILES)
 
 markdownfmt: $(MD_FILES)
 	@test -z "$(shell $(MARKDOWNFMT) -l $(MD_FILES))" || (echo "\033[0;31mThe following files need to be formatted with 'markdownfmt -w -gofmt':" $(shell $(MARKDOWNFMT) -l $(MD_FILES)) "\033[0m" && exit 1)

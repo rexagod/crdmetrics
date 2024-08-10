@@ -1,0 +1,15 @@
+apiVersion: contoso.com/v1alpha1
+kind: MyPlatform
+metadata:
+  name: test-dotnet-app
+  namespace: default
+  labels:
+    foo: "1"
+    bar: "2"
+spec:
+  appId: testdotnetapp
+  language: csharp
+  os: linux
+  instanceSize: small
+  environmentType: dev
+  replicas: 3

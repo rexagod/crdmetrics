@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -45,14 +46,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	versioncollector "github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/rexagod/crsm/internal/version"
 	"github.com/rexagod/crsm/pkg/apis/crsm/v1alpha1"
 	clientset "github.com/rexagod/crsm/pkg/generated/clientset/versioned"
 	crsmscheme "github.com/rexagod/crsm/pkg/generated/clientset/versioned/scheme"
 	informers "github.com/rexagod/crsm/pkg/generated/informers/externalversions"
 )
-
-// controllerName is the name of CRSM controller; used in metrics, so snake-case is necessary.
-const controllerName = "custom_resource_state_metrics"
 
 // Controller is the controller implementation for CRSMR resources.
 type Controller struct {
@@ -78,7 +77,7 @@ type Controller struct {
 	recorder record.EventRecorder
 
 	// crsmUIDToStores is the handler's internal stores map. It records all stores associated with a CRSM resource.
-	crsmUIDToStores map[types.UID][]*Store
+	crsmUIDToStores map[types.UID][]*StoreType
 
 	// options is the collection of command-line options.
 	options *Options
@@ -94,7 +93,7 @@ func NewController(options *Options, kubeClientset kubernetes.Interface, crsmCli
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartStructuredLogging(0)
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeClientset.CoreV1().Events(os.Getenv("POD_NAMESPACE") /* emit in the default namespace if none is defined */)})
-	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerName})
+	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: version.ControllerName})
 	ratelimiter := workqueue.NewMaxOfRateLimiter(
 		workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 5*time.Minute),
 		&workqueue.BucketRateLimiter{Limiter:
@@ -118,20 +117,31 @@ func NewController(options *Options, kubeClientset kubernetes.Interface, crsmCli
 	}
 
 	// Set up event handlers for CRSMR resources.
-	_, err := controller.crsmInformerFactory.Crsm().V1alpha1().CustomResourceStateMetricsResources().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			controller.enqueueCRSMResource(obj, AddEvent)
-		},
-		UpdateFunc: func(old, new interface{}) {
-			if old.(*v1alpha1.CustomResourceStateMetricsResource).ResourceVersion == new.(*v1alpha1.CustomResourceStateMetricsResource).ResourceVersion {
-				return
-			}
-			controller.enqueueCRSMResource(new, UpdateEvent)
-		},
-		DeleteFunc: func(obj interface{}) {
-			controller.enqueueCRSMResource(obj, DeleteEvent)
-		},
-	})
+	_, err := controller.crsmInformerFactory.Crsm().V1alpha1().CustomResourceStateMetricsResources().Informer().
+		AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj interface{}) {
+				controller.enqueueCRSMResource(obj, addEvent)
+			},
+			UpdateFunc: func(old, new interface{}) {
+				oldCRSMR := old.(*v1alpha1.CustomResourceStateMetricsResource)
+				newCRSMR := new.(*v1alpha1.CustomResourceStateMetricsResource)
+				if oldCRSMR.ResourceVersion == newCRSMR.ResourceVersion ||
+
+					// NOTE: Don't add to workqueue if the event stemmed from a status update, else this will create a
+					// reconciliation loop; the resource status update triggers the informer which in turn triggers a
+					// reconciliation (with an update event) which again updates the resource status and so on. This
+					// also applies to other non-spec fields that are updated, such as labels, but those are handled in
+					// the event handler.
+					reflect.DeepEqual(oldCRSMR.Spec, newCRSMR.Spec) &&
+						!reflect.DeepEqual(oldCRSMR.Status, newCRSMR.Status) {
+					return
+				}
+				controller.enqueueCRSMResource(new, updateEvent)
+			},
+			DeleteFunc: func(obj interface{}) {
+				controller.enqueueCRSMResource(obj, deleteEvent)
+			},
+		})
 	if err != nil {
 		klog.Fatal(err)
 	}
@@ -147,6 +157,7 @@ func (c *Controller) enqueueCRSMResource(obj interface{}, event eventType) {
 		utilruntime.HandleError(err)
 		return
 	}
+
 	c.workqueue.Add([2]string{key, event.String()})
 }
 
@@ -168,20 +179,20 @@ func (c *Controller) Run(ctx context.Context, workers int) error {
 	// Build the telemetry registry.
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(
-		versioncollector.NewCollector(controllerName),
+		versioncollector.NewCollector(version.ControllerName),
 		collectors.NewGoCollector(),
-		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{Namespace: controllerName, ReportErrors: true}),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{Namespace: version.ControllerName, ReportErrors: true}),
 	)
 	requestDurationVec := promauto.With(registry).NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "http_request_duration_seconds",
-			Help:    "A histogram of requests for kube-state-metrics metrics handler.",
+			Help:    "A histogram of requests for the main server's metrics endpoint.",
 			Buckets: prometheus.DefBuckets,
 		}, []string{"method", "code"},
 	)
 
 	// Build servers.
-	c.crsmUIDToStores = make(map[types.UID][]*Store)
+	c.crsmUIDToStores = make(map[types.UID][]*StoreType)
 	selfInstance := newSelfServer(
 		net.JoinHostPort(c.options.SelfHost, strconv.Itoa(c.options.SelfPort)),
 	)
@@ -208,13 +219,13 @@ func (c *Controller) Run(ctx context.Context, workers int) error {
 	go func() {
 		logger.V(1).Info("Starting telemetry server")
 		if err := self.ListenAndServe(); err != nil {
-			logger.Error(err, "error starting telemetry server")
+			logger.Error(err, "stopping telemetry server")
 		}
 	}()
 	go func() {
 		logger.V(1).Info("Starting main server")
 		if err := main.ListenAndServe(); err != nil {
-			logger.Error(err, "error starting main server")
+			logger.Error(err, "stopping main server")
 		}
 	}()
 
@@ -262,10 +273,10 @@ func (c *Controller) processNextWorkItem(ctx context.Context) bool {
 		// after Forget, so we must call it before.
 		c.workqueue.Forget(objectWithEvent)
 		logger.V(4).Info("Synced", "key", key)
-		return nil
+		return nil // Do not requeue.
 	}(objectWithEvent)
 	if err != nil {
-		utilruntime.HandleError(err)
+		logger.Error(err, "error processing item")
 		return true
 	}
 
@@ -280,8 +291,8 @@ func (c *Controller) syncHandler(ctx context.Context, key string, event string) 
 	// Extract the namespace and name from the key.
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
-		return nil
+		logger.Error(err, "invalid resource key", "key", key)
+		return nil // Do not requeue.
 	}
 
 	// Get the CRSMR resource with this namespace and name.
@@ -303,7 +314,7 @@ func (c *Controller) handleObject(ctx context.Context, objectI interface{}, even
 
 	// Check if the object is nil, and if so, handle it.
 	if objectI == nil {
-		utilruntime.HandleError(fmt.Errorf("recieved nil object for handling, skipping"))
+		logger.Error(fmt.Errorf("recieved nil object for handling, skipping"), "error handling object")
 
 		// No point in re-queueing.
 		return nil
@@ -317,14 +328,14 @@ func (c *Controller) handleObject(ctx context.Context, objectI interface{}, even
 	if object, ok = objectI.(metav1.Object); !ok {
 		tombstone, ok := objectI.(cache.DeletedFinalStateUnknown)
 		if !ok {
-			utilruntime.HandleError(fmt.Errorf("error decoding object, invalid type"))
+			logger.Error(fmt.Errorf("error decoding object, invalid type"), "error handling object")
 
 			// No point in re-queueing.
 			return nil
 		}
 		object, ok = tombstone.Obj.(metav1.Object)
 		if !ok {
-			utilruntime.HandleError(fmt.Errorf("error decoding object tombstone, invalid type"))
+			logger.Error(fmt.Errorf("error decoding object tombstone, invalid type"), "error handling object")
 
 			// No point in re-queueing.
 			return nil
@@ -337,11 +348,10 @@ func (c *Controller) handleObject(ctx context.Context, objectI interface{}, even
 	logger.V(1).Info("Processing object")
 	switch o := object.(type) {
 	case *v1alpha1.CustomResourceStateMetricsResource:
-		handler := newCRSMHandler(c.crsmClientset, c.dynamicClientset)
-		return handler.handleEvent(ctx, c.crsmUIDToStores, event, o)
+		handler := newCRSMHandler(c.kubeclientset, c.crsmClientset, c.dynamicClientset)
+		return handler.handleEvent(ctx, c.crsmUIDToStores, event, o, c.options.TryNoCache)
 	default:
-		utilruntime.HandleError(fmt.Errorf("unknown object type: (%T)%s", o, klog.KObj(o)))
+		logger.Error(fmt.Errorf("unknown object type"), "cannot handle object")
+		return nil // Do not requeue.
 	}
-
-	return nil
 }

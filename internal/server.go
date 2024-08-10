@@ -42,7 +42,7 @@ type mainServer struct {
 	addr string
 
 	// m is the map of currently active stores per CRSMR resource.
-	m map[types.UID][]*Store
+	m map[types.UID][]*StoreType
 
 	// requestsDurationVec is a histogram denoting the request durations for the metrics endpoint. The metric itself is
 	// registered in the telemetry registry, and will be available along with all other CRSM-based metrics, to not
@@ -62,7 +62,7 @@ func newSelfServer(addr string) *selfServer {
 }
 
 // newMainServer returns a new mainServer.
-func newMainServer(addr string, m map[types.UID][]*Store, requestsDurationVec prometheus.ObserverVec) *mainServer {
+func newMainServer(addr string, m map[types.UID][]*StoreType, requestsDurationVec prometheus.ObserverVec) *mainServer {
 	return &mainServer{promHTTPLogger{"main"}, addr, m, &requestsDurationVec}
 }
 
@@ -122,7 +122,6 @@ func (s *mainServer) build(ctx context.Context, c kubernetes.Interface, _ promet
 				logger.Error(err, "error writing metrics", "source", s.source)
 			}
 		}
-		w.WriteHeader(http.StatusOK)
 	})
 	mux.Handle("/metrics", promhttp.InstrumentHandlerDuration(*s.requestsDurationVec, metricsHandler))
 
@@ -151,5 +150,5 @@ type promHTTPLogger struct {
 
 // Println logs on all errors received by promhttp.Logger.
 func (l promHTTPLogger) Println(v ...interface{}) {
-	klog.ErrorS(fmt.Errorf("%#q", v), "source", l.source)
+	klog.ErrorS(fmt.Errorf("%s", v), "err", "source", l.source)
 }

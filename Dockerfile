@@ -18,5 +18,4 @@ WORKDIR /
 
 COPY --from=builder /crsm .
 
-# Append "-v=X" to set the verbosity level.
 CMD ["./crsm"]
