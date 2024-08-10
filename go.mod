@@ -4,10 +4,10 @@ go 1.21
 
 require (
 	github.com/KimMachineGun/automemlimit v0.6.1
-	github.com/davecgh/go-spew v1.1.1
 	github.com/gobuffalo/flect v1.0.2
 	github.com/prometheus/client_golang v1.19.1
 	github.com/prometheus/common v0.48.0
+	go.uber.org/automaxprocs v1.5.3
 	golang.org/x/time v0.3.0
 	k8s.io/api v0.28.4
 	k8s.io/apimachinery v0.28.4
@@ -22,6 +22,7 @@ require (
 	github.com/cilium/ebpf v0.9.1 // indirect
 	github.com/containerd/cgroups/v3 v3.0.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/docker/go-units v0.4.0 // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
 	github.com/evanphx/json-patch v4.12.0+incompatible // indirect

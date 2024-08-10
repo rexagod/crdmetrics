@@ -19,6 +19,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 
 	"k8s.io/client-go/kubernetes"
@@ -31,25 +32,50 @@ import (
 	v "github.com/rexagod/crsm/internal/version"
 	clientset "github.com/rexagod/crsm/pkg/generated/clientset/versioned"
 	"github.com/rexagod/crsm/pkg/signals"
+
+	"go.uber.org/automaxprocs/maxprocs"
+
+	"github.com/KimMachineGun/automemlimit/memlimit"
 )
 
 func main() {
+
+	// Set up contextual logging.
+	// Set up signals, so we can handle the shutdown signal gracefully.
+	ctx := klog.NewContext(signals.SetupSignalHandler(), klog.NewKlogr())
+	logger := klog.FromContext(ctx)
 
 	// Set up flags.
 	klog.InitFlags(flag.CommandLine)
 	options := internal.NewOptions()
 	options.Read()
 
+	// Set GOMAXPROCS based on CPU quota.
+	if options.AutoGOMAXPROCS {
+		unset, err := maxprocs.Set(maxprocs.Logger(klog.Infof))
+		if err != nil {
+			logger.Error(err, "Error setting GOMAXPROCS")
+			unset()
+		}
+	}
+
+	// Set GOMEMLIMIT based on memory quota.
+	slogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	limit, err := memlimit.SetGoMemLimitWithOpts(
+		memlimit.WithLogger(slogger),
+		memlimit.WithRatio(options.RatioGOMEMLIMIT),
+	)
+	if err != nil {
+		logger.Error(err, "Failed to set GOMEMLIMIT, skipping")
+	} else {
+		logger.Info("GOMEMLIMIT set", "limit", limit)
+	}
+
 	// Quit if only version flag is set.
 	if options.Version && flag.NFlag() == 1 {
 		fmt.Println(v.Version())
 		os.Exit(0)
 	}
-
-	// Set up contextual logging.
-	// Set up signals, so we can handle the shutdown signal gracefully.
-	ctx := klog.NewContext(signals.SetupSignalHandler(), klog.NewKlogr())
-	logger := klog.FromContext(ctx)
 
 	// Build client-sets.
 	cfg, err := clientcmd.BuildConfigFromFlags(options.MasterURL, options.Kubeconfig)
