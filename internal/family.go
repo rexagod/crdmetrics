@@ -47,12 +47,12 @@ type familyGenerator struct {
 }
 
 // newFamilyGenerator returns a new familyGenerator.
-func newFamilyGenerator(name, help, t string, metricFamilyGeneratorFn metricFamilyGeneratorType) *familyGenerator {
+func newFamilyGenerator(name, help, t string, objectToMetricFamilyGenerator metricFamilyGeneratorType) *familyGenerator {
 	return &familyGenerator{
 		name:                          name,
 		help:                          help,
 		t:                             t,
-		objectToMetricFamilyGenerator: metricFamilyGeneratorFn,
+		objectToMetricFamilyGenerator: objectToMetricFamilyGenerator,
 	}
 }
 

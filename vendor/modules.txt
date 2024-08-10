@@ -1,12 +1,38 @@
+# github.com/KimMachineGun/automemlimit v0.6.1
+## explicit; go 1.21
+github.com/KimMachineGun/automemlimit
+github.com/KimMachineGun/automemlimit/memlimit
 # github.com/beorn7/perks v1.0.1
 ## explicit; go 1.11
 github.com/beorn7/perks/quantile
 # github.com/cespare/xxhash/v2 v2.2.0
 ## explicit; go 1.11
 github.com/cespare/xxhash/v2
+# github.com/cilium/ebpf v0.9.1
+## explicit; go 1.17
+github.com/cilium/ebpf
+github.com/cilium/ebpf/asm
+github.com/cilium/ebpf/btf
+github.com/cilium/ebpf/internal
+github.com/cilium/ebpf/internal/sys
+github.com/cilium/ebpf/internal/unix
+github.com/cilium/ebpf/link
+# github.com/containerd/cgroups/v3 v3.0.1
+## explicit; go 1.17
+github.com/containerd/cgroups/v3
+github.com/containerd/cgroups/v3/cgroup1
+github.com/containerd/cgroups/v3/cgroup1/stats
+github.com/containerd/cgroups/v3/cgroup2
+github.com/containerd/cgroups/v3/cgroup2/stats
+# github.com/coreos/go-systemd/v22 v22.3.2
+## explicit; go 1.12
+github.com/coreos/go-systemd/v22/dbus
 # github.com/davecgh/go-spew v1.1.1
 ## explicit
 github.com/davecgh/go-spew/spew
+# github.com/docker/go-units v0.4.0
+## explicit
+github.com/docker/go-units
 # github.com/emicklei/go-restful/v3 v3.11.0
 ## explicit; go 1.13
 github.com/emicklei/go-restful/v3
@@ -31,6 +57,9 @@ github.com/go-openapi/swag
 # github.com/gobuffalo/flect v1.0.2
 ## explicit; go 1.16
 github.com/gobuffalo/flect
+# github.com/godbus/dbus/v5 v5.0.4
+## explicit; go 1.12
+github.com/godbus/dbus/v5
 # github.com/gogo/protobuf v1.3.2
 ## explicit; go 1.15
 github.com/gogo/protobuf/proto
@@ -89,13 +118,23 @@ github.com/modern-go/reflect2
 # github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 ## explicit
 github.com/munnerz/goautoneg
+# github.com/opencontainers/runtime-spec v1.0.2
+## explicit
+github.com/opencontainers/runtime-spec/specs-go
+# github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
+## explicit; go 1.16
+github.com/pbnjay/memory
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
-# github.com/prometheus/client_golang v1.18.0
-## explicit; go 1.19
+# github.com/prometheus/client_golang v1.19.1
+## explicit; go 1.20
 github.com/prometheus/client_golang/prometheus
+github.com/prometheus/client_golang/prometheus/collectors
+github.com/prometheus/client_golang/prometheus/collectors/version
 github.com/prometheus/client_golang/prometheus/internal
+github.com/prometheus/client_golang/prometheus/promauto
+github.com/prometheus/client_golang/prometheus/promhttp
 # github.com/prometheus/client_model v0.5.0
 ## explicit; go 1.19
 github.com/prometheus/client_model/go
@@ -110,6 +149,9 @@ github.com/prometheus/common/version
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
+# github.com/sirupsen/logrus v1.8.1
+## explicit; go 1.13
+github.com/sirupsen/logrus
 # github.com/spf13/pflag v1.0.5
 ## explicit; go 1.12
 github.com/spf13/pflag
@@ -129,7 +171,7 @@ golang.org/x/net/idna
 ## explicit; go 1.18
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
-# golang.org/x/sys v0.16.0
+# golang.org/x/sys v0.17.0
 ## explicit; go 1.18
 golang.org/x/sys/execabs
 golang.org/x/sys/plan9
@@ -170,7 +212,7 @@ google.golang.org/appengine/internal/log
 google.golang.org/appengine/internal/remote_api
 google.golang.org/appengine/internal/urlfetch
 google.golang.org/appengine/urlfetch
-# google.golang.org/protobuf v1.32.0
+# google.golang.org/protobuf v1.33.0
 ## explicit; go 1.17
 google.golang.org/protobuf/encoding/protodelim
 google.golang.org/protobuf/encoding/prototext
@@ -178,6 +220,7 @@ google.golang.org/protobuf/encoding/protowire
 google.golang.org/protobuf/internal/descfmt
 google.golang.org/protobuf/internal/descopts
 google.golang.org/protobuf/internal/detrand
+google.golang.org/protobuf/internal/editiondefaults
 google.golang.org/protobuf/internal/encoding/defval
 google.golang.org/protobuf/internal/encoding/messageset
 google.golang.org/protobuf/internal/encoding/tag
@@ -200,6 +243,7 @@ google.golang.org/protobuf/reflect/protoregistry
 google.golang.org/protobuf/runtime/protoiface
 google.golang.org/protobuf/runtime/protoimpl
 google.golang.org/protobuf/types/descriptorpb
+google.golang.org/protobuf/types/gofeaturespb
 google.golang.org/protobuf/types/known/anypb
 google.golang.org/protobuf/types/known/durationpb
 google.golang.org/protobuf/types/known/timestamppb

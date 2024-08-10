@@ -32,6 +32,9 @@ type Store struct {
 
 	// objectToFamilyMetricsGenerator generates metric families' metrics from an object, and groups them by it.
 	objectToFamilyMetricsGenerator familyMetricsGeneratorType
+
+	// crsmrUID is a backlink to the CRSMR resource that the store is associated with, and enables GC.
+	crsmrUID types.UID
 }
 
 // newStore returns a new Store.

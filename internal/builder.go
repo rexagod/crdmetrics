@@ -23,8 +23,8 @@ func buildStore(
 	dynamicClientset dynamic.Interface,
 	expectedType interface{},
 	familyGenerators []*familyGenerator,
-	forceNoCachedResponse bool,
-	labelSelector, fieldSelector string,
+	tryNoCache bool, // Retrieved from options.
+	labelSelector, fieldSelector string, // Retrieved from the configuration.
 ) (*Store, error) {
 	logger := klog.FromContext(ctx)
 
@@ -46,9 +46,10 @@ func buildStore(
 		LabelSelector: labelSelector,
 		FieldSelector: fieldSelector,
 	}
-	resourceVersionLatest := "0"
-	if forceNoCachedResponse {
-		lwo.ResourceVersion = resourceVersionLatest
+	resourceVersionLatestBestEffort := "0"
+	if tryNoCache {
+		lwo.ResourceVersionMatch = metav1.ResourceVersionMatchNotOlderThan
+		lwo.ResourceVersion = resourceVersionLatestBestEffort
 	}
 	lw := &cache.ListWatch{
 		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {

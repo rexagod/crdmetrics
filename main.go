@@ -1,5 +1,5 @@
 /*
-Copyright 2023 The Kubernetes crsm Authors.
+Copyright 2024 The Kubernetes CRSM Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,16 +36,12 @@ import (
 func main() {
 
 	// Set up flags.
-	klog.InitFlags(nil)
-	klog.SetOutput(os.Stdout)
-	kubeconfig := *flag.String("kubeconfig", os.Getenv("KUBECONFIG"), "Path to a kubeconfig. Only required if out-of-cluster.")
-	masterURL := *flag.String("master", os.Getenv("KUBERNETES_MASTER"), "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
-	workers := *flag.Int("workers", 2, "Number of workers processing the queue. Defaults to 2.")
-	version := *flag.Bool("version", false, "Print version information and quit")
-	flag.Parse()
+	klog.InitFlags(flag.CommandLine)
+	options := internal.NewOptions()
+	options.Read()
 
 	// Quit if only version flag is set.
-	if version && flag.NFlag() == 1 {
+	if options.Version && flag.NFlag() == 1 {
 		fmt.Println(v.Version())
 		os.Exit(0)
 	}
@@ -56,9 +52,9 @@ func main() {
 	logger := klog.FromContext(ctx)
 
 	// Build client-sets.
-	cfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
+	cfg, err := clientcmd.BuildConfigFromFlags(options.MasterURL, options.Kubeconfig)
 	if err != nil {
-		logger.Error(err, "Error building kubeconfig", "kubeconfig", kubeconfig)
+		logger.Error(err, "Error building kubeconfig", "kubeconfig", options.Kubeconfig)
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 	kubeClientset, err := kubernetes.NewForConfig(cfg)
@@ -78,7 +74,7 @@ func main() {
 	}
 
 	// Start the controller.
-	if err = internal.NewController(ctx, kubeClientset, crsmClientset, dynamicClientset).Run(ctx, workers); err != nil {
+	if err = internal.NewController(options, kubeClientset, crsmClientset, dynamicClientset).Run(ctx, options.Workers); err != nil {
 		logger.Error(err, "Error running controller")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}

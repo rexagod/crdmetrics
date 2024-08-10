@@ -1,5 +1,5 @@
 /*
-Copyright 2023 The Kubernetes crsm Authors.
+Copyright 2024 The Kubernetes CRSM Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,17 +19,20 @@ package internal
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
+	"strconv"
 	"time"
 
 	"golang.org/x/time/rate"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/dynamic"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -38,17 +41,20 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
-	"github.com/davecgh/go-spew/spew"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	versioncollector "github.com/prometheus/client_golang/prometheus/collectors/version"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/rexagod/crsm/pkg/apis/crsm/v1alpha1"
 	clientset "github.com/rexagod/crsm/pkg/generated/clientset/versioned"
 	crsmscheme "github.com/rexagod/crsm/pkg/generated/clientset/versioned/scheme"
 	informers "github.com/rexagod/crsm/pkg/generated/informers/externalversions"
 )
 
-// controllerName is the event source for the recorder.
-const controllerName = "crsm-controller"
+// controllerName is the name of CRSM controller; used in metrics, so snake-case is necessary.
+const controllerName = "custom_resource_state_metrics"
 
-// Controller is the controller implementation for CustomResourceStateMetricsResource resources.
+// Controller is the controller implementation for CRSMR resources.
 type Controller struct {
 
 	// kubeclientset is a standard kubernetes clientset, required for native operations.
@@ -60,7 +66,7 @@ type Controller struct {
 	// dynamicClientset is a clientset for CRD operations.
 	dynamicClientset dynamic.Interface
 
-	// crsmInformerFactory is a shared informer factory for crsm resources.
+	// crsmInformerFactory is a shared informer factory for CRSM resources.
 	crsmInformerFactory informers.SharedInformerFactory
 
 	// workqueue is a rate limited work queue. This is used to queue work to be processed instead of performing it as
@@ -70,16 +76,21 @@ type Controller struct {
 
 	// recorder is an event recorder for recording event resources.
 	recorder record.EventRecorder
+
+	// crsmUIDToStores is the handler's internal stores map. It records all stores associated with a CRSM resource.
+	crsmUIDToStores map[types.UID][]*Store
+
+	// options is the collection of command-line options.
+	options *Options
 }
 
 // NewController returns a new sample controller.
-func NewController(ctx context.Context, kubeClientset kubernetes.Interface, crsmClientset clientset.Interface, dynamicClientset dynamic.Interface) *Controller {
+func NewController(options *Options, kubeClientset kubernetes.Interface, crsmClientset clientset.Interface, dynamicClientset dynamic.Interface) *Controller {
 
 	// Add native resources to the default Kubernetes Scheme so Events can be logged for them.
 	utilruntime.Must(crsmscheme.AddToScheme(scheme.Scheme))
 
 	// Initialize the controller.
-	logger := klog.FromContext(ctx)
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartStructuredLogging(0)
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeClientset.CoreV1().Events(os.Getenv("POD_NAMESPACE") /* emit in the default namespace if none is defined */)})
@@ -103,10 +114,10 @@ func NewController(ctx context.Context, kubeClientset kubernetes.Interface, crsm
 		crsmInformerFactory: informers.NewSharedInformerFactory(crsmClientset, 0),
 		workqueue:           workqueue.NewRateLimitingQueue(ratelimiter),
 		recorder:            recorder,
+		options:             options,
 	}
 
-	// Set up event handlers for CustomResourceStateMetricsResource resources.
-	logger.V(4).Info("Setting up event handlers")
+	// Set up event handlers for CRSMR resources.
 	_, err := controller.crsmInformerFactory.Crsm().V1alpha1().CustomResourceStateMetricsResources().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			controller.enqueueCRSMResource(obj, AddEvent)
@@ -128,7 +139,7 @@ func NewController(ctx context.Context, kubeClientset kubernetes.Interface, crsm
 	return controller
 }
 
-// enqueueCRSMResource takes a CustomResourceStateMetricsResource resource and converts it into a namespace/name key.
+// enqueueCRSMResource takes a CRSMR resource and converts it into a namespace/name key.
 func (c *Controller) enqueueCRSMResource(obj interface{}, event eventType) {
 	var key string
 	var err error
@@ -145,7 +156,7 @@ func (c *Controller) Run(ctx context.Context, workers int) error {
 	defer c.workqueue.ShutDown()
 
 	logger := klog.FromContext(ctx)
-	logger.V(4).Info("Starting CustomResourceStateMetricsResource controller")
+	logger.V(1).Info("Starting controller")
 	logger.V(4).Info("Waiting for informer caches to sync")
 
 	// Start the informer factories to begin populating the informer caches.
@@ -154,20 +165,70 @@ func (c *Controller) Run(ctx context.Context, workers int) error {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
+	// Build the telemetry registry.
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(
+		versioncollector.NewCollector(controllerName),
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{Namespace: controllerName, ReportErrors: true}),
+	)
+	requestDurationVec := promauto.With(registry).NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "http_request_duration_seconds",
+			Help:    "A histogram of requests for kube-state-metrics metrics handler.",
+			Buckets: prometheus.DefBuckets,
+		}, []string{"method", "code"},
+	)
+
+	// Build servers.
+	c.crsmUIDToStores = make(map[types.UID][]*Store)
+	selfInstance := newSelfServer(
+		net.JoinHostPort(c.options.SelfHost, strconv.Itoa(c.options.SelfPort)),
+	)
+	self := selfInstance.build(ctx, c.kubeclientset, registry)
+	mainInstance := newMainServer(
+		net.JoinHostPort(c.options.MainHost, strconv.Itoa(c.options.MainPort)),
+		c.crsmUIDToStores,
+		requestDurationVec,
+	)
+	main := mainInstance.build(ctx, c.kubeclientset, registry)
+
 	// Launch `workers` amount of goroutines to process the work queue.
-	logger.Info("Starting workers", "count", workers)
+	logger.V(1).Info("Starting workers")
 	for i := 0; i < workers; i++ {
 		go wait.UntilWithContext(ctx, func(ctx context.Context) {
 
-			// Run every second. Nothing will be done if there are no enqueued items. Work-queues are thread-safe.
+			// Nothing will be done if there are no enqueued items. Work-queues are thread-safe.
 			for c.processNextWorkItem(ctx) {
 			}
 		}, time.Second)
 	}
 
-	logger.V(4).Info("Started workers", "count", workers)
+	// Start serving.
+	go func() {
+		logger.V(1).Info("Starting telemetry server")
+		if err := self.ListenAndServe(); err != nil {
+			logger.Error(err, "error starting telemetry server")
+		}
+	}()
+	go func() {
+		logger.V(1).Info("Starting main server")
+		if err := main.ListenAndServe(); err != nil {
+			logger.Error(err, "error starting main server")
+		}
+	}()
+
+	// Stop serving on context cancellation.
 	<-ctx.Done()
-	logger.V(4).Info("Shutting down workers", "count", workers)
+	logger.V(1).Info("Shutting down servers")
+	err := self.Shutdown(ctx)
+	if err != nil {
+		logger.Error(err, "error shutting down telemetry server")
+	}
+	err = main.Shutdown(ctx)
+	if err != nil {
+		logger.Error(err, "error shutting down main server")
+	}
 
 	return nil
 }
@@ -200,7 +261,7 @@ func (c *Controller) processNextWorkItem(ctx context.Context) bool {
 		// get queued again until another change happens. Done has no effect
 		// after Forget, so we must call it before.
 		c.workqueue.Forget(objectWithEvent)
-		logger.V(1).Info("Synced", "key", key)
+		logger.V(4).Info("Synced", "key", key)
 		return nil
 	}(objectWithEvent)
 	if err != nil {
@@ -214,7 +275,7 @@ func (c *Controller) processNextWorkItem(ctx context.Context) bool {
 // syncHandler resolves the object key, and sends it down for processing.
 func (c *Controller) syncHandler(ctx context.Context, key string, event string) error {
 	logger := klog.FromContext(ctx)
-	logger.V(1).Info("Syncing", "key", key, "event", event)
+	logger.V(4).Info("Syncing", "key", key, "event", event)
 
 	// Extract the namespace and name from the key.
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
@@ -223,25 +284,25 @@ func (c *Controller) syncHandler(ctx context.Context, key string, event string) 
 		return nil
 	}
 
-	// Get the CustomResourceStateMetricsResource resource with this namespace and name.
-	crsmResource, err := c.crsmInformerFactory.Crsm().V1alpha1().CustomResourceStateMetricsResources().Lister().CustomResourceStateMetricsResources(namespace).Get(name)
+	// Get the CRSMR resource with this namespace and name.
+	resource, err := c.crsmInformerFactory.Crsm().V1alpha1().CustomResourceStateMetricsResources().Lister().CustomResourceStateMetricsResources(namespace).Get(name)
 	if err != nil {
 		if !errors.IsNotFound(err) {
-			return fmt.Errorf("error getting CustomResourceStateMetricsResource '%s/%s': %w", namespace, name, err)
+			return fmt.Errorf("error getting CustomResourceStateMetricsResource %q: %w", klog.KRef(namespace, name), err)
 		}
 
-		crsmResource = &v1alpha1.CustomResourceStateMetricsResource{}
-		crsmResource.SetName(name)
+		resource = &v1alpha1.CustomResourceStateMetricsResource{}
+		resource.SetName(name)
 	}
 
-	return c.handleObject(ctx, crsmResource, event)
+	return c.handleObject(ctx, resource, event)
 }
 
-func (c *Controller) handleObject(ctx context.Context, obj interface{}, event string) error {
+func (c *Controller) handleObject(ctx context.Context, objectI interface{}, event string) error {
 	logger := klog.FromContext(ctx)
 
 	// Check if the object is nil, and if so, handle it.
-	if obj == nil {
+	if objectI == nil {
 		utilruntime.HandleError(fmt.Errorf("recieved nil object for handling, skipping"))
 
 		// No point in re-queueing.
@@ -253,8 +314,8 @@ func (c *Controller) handleObject(ctx context.Context, obj interface{}, event st
 		object metav1.Object
 		ok     bool
 	)
-	if object, ok = obj.(metav1.Object); !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+	if object, ok = objectI.(metav1.Object); !ok {
+		tombstone, ok := objectI.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("error decoding object, invalid type"))
 
@@ -273,16 +334,13 @@ func (c *Controller) handleObject(ctx context.Context, obj interface{}, event st
 
 	// Process the object based on its type.
 	logger = klog.LoggerWithValues(klog.FromContext(ctx), "key", klog.KObj(object), "event", event)
-	logger.V(1).Info("Processing")
+	logger.V(1).Info("Processing object")
 	switch o := object.(type) {
 	case *v1alpha1.CustomResourceStateMetricsResource:
-		handler := &crsmEventHandler{
-			namespace: object.GetNamespace(),
-			clientset: c.crsmClientset,
-		}
-		return handler.handleEvent(ctx, c.dynamicClientset, o, event)
+		handler := newCRSMHandler(c.crsmClientset, c.dynamicClientset)
+		return handler.handleEvent(ctx, c.crsmUIDToStores, event, o)
 	default:
-		utilruntime.HandleError(fmt.Errorf("unknown object type: %T, full schema below:\n%s", o, spew.Sdump(obj)))
+		utilruntime.HandleError(fmt.Errorf("unknown object type: (%T)%s", o, klog.KObj(o)))
 	}
 
 	return nil
