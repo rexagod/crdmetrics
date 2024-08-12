@@ -8,7 +8,15 @@ Custom Resource State Metrics (`crsm`) is a Kubernetes controller that builds on
 
 ## Development
 
-Test out your changes with `POD_NAMESPACE=default make apply apply-testdata local`. For more details, take a look at the [Makefile](Makefile) targets.
+Start developing by following these steps:
+
+- Set up dependencies with `make setup`.
+- Test out your changes with `POD_NAMESPACE=<controller-namespace> make apply apply-testdata local`.
+  - Telemetry metrics, by default, are exposed on `:9998/metrics`.
+  - Resource metrics, by default, are exposed on `:9999/metrics`.
+- Start a `pprof` interactive session with `make pprof`.
+
+For more details, take a look at the [Makefile](Makefile) targets.
 
 ## Notes
 

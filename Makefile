@@ -19,6 +19,8 @@ MARKDOWNFMT ?= $(shell go env GOPATH)/bin/markdownfmt
 MARKDOWNFMT_VERSION ?= v3.1.0
 MD_FILES = $(shell find . \( -type d -name 'vendor' -o -type d -name $(patsubst %/,%,$(patsubst ./%,%,$(ASSETS_DIR))) \) -prune -o -type f -name "*.md" -print)
 OS ?= $(shell uname -s | tr '[:upper:]' '[:lower:]')
+PPROF_OPTIONS ?=
+PPROF_PORT ?= 9998
 PROJECT_NAME = crsm
 RUNNER = $(shell id -u -n)@$(shell hostname)
 V ?= 4
@@ -33,8 +35,8 @@ all: lint $(PROJECT_NAME)
 # Setup #
 #########
 
-.PHONY: setup-dependencies
-setup-dependencies:
+.PHONY: setup
+setup:
 	# Setup vale.
 	@wget https://github.com/errata-ai/vale/releases/download/v$(VALE_VERSION)/vale_$(VALE_VERSION)_$(VALE_ARCH).tar.gz && \
 	mkdir -p assets && tar -xvzf vale_$(VALE_VERSION)_$(VALE_ARCH).tar.gz -C $(ASSETS_DIR) && \
@@ -118,6 +120,10 @@ local: vet manifests codegen $(PROJECT_NAME)
 ###########
 # Testing #
 ###########
+
+.PHONY: pprof
+pprof:
+	@go tool pprof ":$(PPROF_PORT)" $(PPROF_OPTIONS)
 
 .PHONY: test-unit
 test-unit:

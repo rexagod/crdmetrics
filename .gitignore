@@ -1,2 +1,7 @@
+# Module paraphernalia
+
 assets
 crsm
+
+# `pprof` artefacts
+*.ps
