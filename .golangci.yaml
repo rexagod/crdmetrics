@@ -1,0 +1,29 @@
+run:
+  deadline: 1m
+  skip-files:
+    - pkg/apis/crsm/register.go
+    - pkg/apis/crsm/v1alpha1/register.go
+
+linters:
+  disable:
+    - exhaustruct
+    - goerr113
+    - gci
+  presets:
+    - bugs
+    - comment
+    - error
+    - import
+    - performance
+    - test
+    - unused
+
+linters-settings:
+  depguard:
+    rules:
+      main:
+        deny:
+          - pkg: "github.com/pkg/errors"
+            desc: "Use 'errors' or 'fmt' instead."
+          - pkg: "golang.org/x/exp/slices"
+            desc: "Use 'slices' instead."

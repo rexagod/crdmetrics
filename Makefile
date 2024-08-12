@@ -13,8 +13,9 @@ LOCAL_NAMESPACE ?= default
 GIT_COMMIT = $(shell git rev-parse --short HEAD)
 GO ?= go
 GOLANGCI_LINT ?= $(shell go env GOPATH)/bin/golangci-lint
+GOLANGCI_LINT_CONFIG ?= .golangci.yaml
 GOLANGCI_LINT_VERSION ?= v1.54.2
-GO_FILES = $(shell find . -type f -name "*.go")
+GO_FILES = $(shell find . -type d -name vendor -prune -o -type f -name "*.go" -print)
 MARKDOWNFMT ?= $(shell go env GOPATH)/bin/markdownfmt
 MARKDOWNFMT_VERSION ?= v3.1.0
 MD_FILES = $(shell find . \( -type d -name 'vendor' -o -type d -name $(patsubst %/,%,$(patsubst ./%,%,$(ASSETS_DIR))) \) -prune -o -type f -name "*.md" -print)
@@ -167,7 +168,7 @@ gofmt-fix: $(GO_FILES)
 	@gofmt -w . || exit 1
 
 golangci-lint: $(GO_FILES)
-	@$(GOLANGCI_LINT) run
+	@$(GOLANGCI_LINT) run -c $(GOLANGCI_LINT_CONFIG)
 
 .PHONY: lint-go
 lint-go: gofmt golangci-lint

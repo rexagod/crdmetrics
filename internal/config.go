@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"fmt"
 
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -68,7 +69,11 @@ func newConfigurer(
 
 // parse knows how to parse the given configuration.
 func (c *configurer) parse(configurationRaw string) error {
-	return yaml.Unmarshal([]byte(configurationRaw), &c.configuration)
+	err := yaml.Unmarshal([]byte(configurationRaw), &c.configuration)
+	if err != nil {
+		err = fmt.Errorf("error unmarshalling configuration: %w", err)
+	}
+	return err
 }
 
 // build knows how to build the given configuration.

@@ -314,7 +314,7 @@ func (c *Controller) handleObject(ctx context.Context, objectI interface{}, even
 
 	// Check if the object is nil, and if so, handle it.
 	if objectI == nil {
-		logger.Error(fmt.Errorf("recieved nil object for handling, skipping"), "error handling object")
+		logger.Error(fmt.Errorf("received nil object for handling, skipping"), "error handling object")
 
 		// No point in re-queueing.
 		return nil
@@ -340,7 +340,7 @@ func (c *Controller) handleObject(ctx context.Context, objectI interface{}, even
 			// No point in re-queueing.
 			return nil
 		}
-		logger.V(1).Info("Recovered", "key", "key", klog.KObj(object))
+		logger.V(1).Info("Recovered", "key", klog.KObj(object))
 	}
 
 	// Process the object based on its type.

@@ -31,5 +31,6 @@ In the order of priority:
 - [ ] Conformance tests covering Kube-State-Metrics' Custom Resource State's test cases.
 - [ ] E2E tests covering the controller's functionality.
 - [ ] [Graduate to ALPHA](https://github.com/kubernetes/enhancements/issues/4785).
+- [ ] gRPC server for metrics generation.
 
 ###### [License](./LICENSE)

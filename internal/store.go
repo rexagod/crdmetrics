@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"fmt"
 	"sync"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -57,7 +58,7 @@ func (s *StoreType) Add(objectI interface{}) error {
 	// Cast into a typed object.
 	object, err := meta.Accessor(objectI)
 	if err != nil {
-		return err
+		return fmt.Errorf("error casting object interface: %w", err)
 	}
 
 	// Generate metrics from the object.
@@ -88,7 +89,7 @@ func (s *StoreType) Delete(objectI interface{}) error {
 	// Cast into a typed object.
 	object, err := meta.Accessor(objectI)
 	if err != nil {
-		return err
+		return fmt.Errorf("error casting object interface: %w", err)
 	}
 
 	// Delete the object's metrics.

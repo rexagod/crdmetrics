@@ -244,7 +244,7 @@ func (h *crsmHandler) emitSuccessOnResource(
 		return nil, fmt.Errorf("failed to update the status of %s: %w", kObj, err)
 	}
 
-	return resource, err
+	return resource, nil
 }
 
 // emitFailureOnResource emits a failure condition on the given resource.

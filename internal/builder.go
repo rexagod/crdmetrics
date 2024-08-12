@@ -44,10 +44,18 @@ func buildStore(
 	}
 	lw := &cache.ListWatch{
 		ListFunc: func(_ metav1.ListOptions) (runtime.Object, error) {
-			return dynamicClientset.Resource(gvr).List(ctx, lwo)
+			o, err := dynamicClientset.Resource(gvr).List(ctx, lwo)
+			if err != nil {
+				err = fmt.Errorf("error listing %s with options %v: %w", gvr.String(), lwo, err)
+			}
+			return o, err
 		},
 		WatchFunc: func(_ metav1.ListOptions) (watch.Interface, error) {
-			return dynamicClientset.Resource(gvr).Watch(ctx, lwo)
+			o, err := dynamicClientset.Resource(gvr).Watch(ctx, lwo)
+			if err != nil {
+				err = fmt.Errorf("error watching %s with options %v: %w", gvr.String(), lwo, err)
+			}
+			return o, err
 		},
 	}
 
