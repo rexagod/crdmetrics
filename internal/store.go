@@ -5,6 +5,8 @@ import (
 	"sync"
 
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 )
@@ -55,22 +57,26 @@ func (s *StoreType) Add(objectI interface{}) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	// Cast into a typed object.
-	object, err := meta.Accessor(objectI)
+	// Convert into an unstructured object.
+	unstructuredObjectMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(objectI)
 	if err != nil {
-		return fmt.Errorf("error casting object interface: %w", err)
+		return fmt.Errorf("error converting object interface to unstructured: %w", err)
 	}
+	unstructuredObject := &unstructured.Unstructured{Object: unstructuredObjectMap}
 
 	// Generate metrics from the object.
 	familyMetrics := make([]string, len(s.Families))
 	for i, f := range s.Families {
-		familyMetrics[i] = f.raw()
+		familyMetrics[i], err = f.rawWith(unstructuredObject)
+		if err != nil {
+			s.logger.Error(err, "Add", "family", f.Name)
+		}
 		s.logger.V(4).Info("Add", "family", f.Name, "metrics", familyMetrics[i])
 	}
 
 	// Store the generated metrics.
-	s.logger.V(2).Info("Add", "key", klog.KObj(object))
-	s.metrics[object.GetUID()] = familyMetrics
+	s.logger.V(2).Info("Add", "key", klog.KObj(unstructuredObject))
+	s.metrics[unstructuredObject.GetUID()] = familyMetrics
 
 	return nil
 }
@@ -122,16 +128,9 @@ func (s *StoreType) GetByKey(_ string) (interface{}, bool, error) {
 
 // Replace will delete the contents of the store, using instead the given list. store takes ownership of the list, you
 // should not reference it after calling this function.
-func (s *StoreType) Replace(objectIs []interface{}, _ string) error {
-	s.logger.V(2).Info("Replace", "defer", "Add")
-	s.metrics = map[types.UID][]string{}
-	for _, o := range objectIs {
-		err := s.Add(o)
-		if err != nil {
-			return err
-		}
-	}
-
+// NOTE: cache.Reflector starts off with Replace followed by Add rather than just Add, and as such this is skipped to
+// avoid building stores twice.
+func (s *StoreType) Replace(_ []interface{}, _ string) error {
 	return nil
 }
 

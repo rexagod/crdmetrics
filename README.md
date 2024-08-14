@@ -27,7 +27,7 @@ For more details, take a look at the [Makefile](Makefile) targets.
 
 In the order of priority:
 
-- [ ] CEL expressions for metric generation.
+- [ ] CEL expressions for metric generation (or [*unstructured.Unstructured](https://github.com/kubernetes/apimachinery/issues/181), if that suffices).
 - [ ] Conformance tests covering Kube-State-Metrics' Custom Resource State's test cases.
 - [ ] E2E tests covering the controller's functionality.
 - [ ] [Graduate to ALPHA](https://github.com/kubernetes/enhancements/issues/4785).

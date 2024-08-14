@@ -2,9 +2,10 @@ package internal
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 const (
@@ -36,20 +37,52 @@ type FamilyType struct {
 	Metrics []*MetricType `yaml:"metrics"`
 }
 
-// raw returns the given family in its byte representation.
-func (f *FamilyType) raw() string {
+// rawWith returns the given family in its byte representation.
+func (f *FamilyType) rawWith(u *unstructured.Unstructured) (string, error) {
 	s := strings.Builder{}
 	for _, m := range f.Metrics {
+
+		// Resolve the label values.
+		resolvedLabelValues := make([]string, 0, len(m.LabelValues))
+		for _, query := range m.LabelValues {
+			resolvedI, _, err := unstructured.NestedFieldNoCopy(u.Object, strings.Split(query, ".")...)
+			if err != nil {
+				return "", fmt.Errorf("error resolving %s: %w", query, err)
+			}
+			resolvedLabelValues = append(resolvedLabelValues, fmt.Sprintf("%v", resolvedI))
+		}
+		m.LabelValues = resolvedLabelValues
+
+		// Append GVK to the labelset.
+		m.LabelKeys = append(m.LabelKeys, "group", "version", "kind")
+		m.LabelValues = append(m.LabelValues, u.GroupVersionKind().Group, u.GroupVersionKind().Version, u.GroupVersionKind().Kind)
+
+		// Resolve the metric value.
+		var resolvedValue interface{}
+		var err error
+
+		// Check if the metric value string is a float64.
+		resolvedValue, err = strconv.ParseFloat(m.Value, 64)
+		if err != nil {
+
+			// Try to resolve the metric value otherwise.
+			resolvedValue, _, err = unstructured.NestedFieldNoCopy(u.Object, strings.Split(m.Value, ".")...)
+			if err != nil {
+				return "", fmt.Errorf("error resolving %s: %w", m.Value, err)
+			}
+		}
+		m.Value = fmt.Sprintf("%v", resolvedValue)
+
+		// Write the metric.
 		s.WriteString(kubeCustomResourcePrefix)
 		s.WriteString(f.Name)
-		err := m.writeTo(&s)
+		err = m.writeTo(&s)
 		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("error writing %s metric: %w", f.Name, err))
-			return ""
+			return "", fmt.Errorf("error writing %s metric: %w", f.Name, err)
 		}
 	}
 
-	return s.String()
+	return s.String(), nil
 }
 
 // buildHeaders generates the header for the given family.

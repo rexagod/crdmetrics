@@ -27,6 +27,7 @@ RUNNER = $(shell id -u -n)@$(shell hostname)
 V ?= 4
 VALE ?= $(ASSETS_DIR)vale
 VALE_ARCH ?= $(if $(filter $(shell uname -m),arm64),macOS_arm64,Linux_64-bit)
+VALE_STYLES_DIR ?= /tmp/.vale/styles
 VALE_VERSION ?= 3.1.0
 VERSION = $(shell cat VERSION)
 
@@ -146,7 +147,8 @@ clean:
 	@git clean -fxd
 
 vale: .vale.ini $(MD_FILES)
-	@$(ASSETS_DIR)vale sync && \
+	@mkdir -p $(VALE_STYLES_DIR) && \
+	$(ASSETS_DIR)vale sync && \
 	$(ASSETS_DIR)vale $(MD_FILES)
 
 markdownfmt: $(MD_FILES)
