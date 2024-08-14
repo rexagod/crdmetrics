@@ -42,6 +42,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	versioncollector "github.com/prometheus/client_golang/prometheus/collectors/version"
@@ -84,7 +85,8 @@ type Controller struct {
 }
 
 // NewController returns a new sample controller.
-func NewController(options *Options, kubeClientset kubernetes.Interface, crsmClientset clientset.Interface, dynamicClientset dynamic.Interface) *Controller {
+func NewController(ctx context.Context, options *Options, kubeClientset kubernetes.Interface, crsmClientset clientset.Interface, dynamicClientset dynamic.Interface) *Controller {
+	logger := klog.FromContext(ctx)
 
 	// Add native resources to the default Kubernetes Scheme so Events can be logged for them.
 	utilruntime.Must(crsmscheme.AddToScheme(scheme.Scheme))
@@ -132,10 +134,12 @@ func NewController(options *Options, kubeClientset kubernetes.Interface, crsmCli
 					// reconciliation (with an update event) which again updates the resource status and so on. This
 					// also applies to other non-spec fields that are updated, such as labels, but those are handled in
 					// the event handler.
-					reflect.DeepEqual(oldCRSMR.Spec, newCRSMR.Spec) &&
-						!reflect.DeepEqual(oldCRSMR.Status, newCRSMR.Status) {
+					// Queue only for `spec` changes.
+					reflect.DeepEqual(oldCRSMR.Spec, newCRSMR.Spec) {
+					logger.V(10).Info("Skipping event", "[-old +new]", cmp.Diff(oldCRSMR, newCRSMR))
 					return
 				}
+				logger.V(4).Info("Update event", "[-old +new]", cmp.Diff(oldCRSMR.Spec.ConfigurationYAML, newCRSMR.Spec.ConfigurationYAML))
 				controller.enqueueCRSMResource(new, updateEvent)
 			},
 			DeleteFunc: func(obj interface{}) {
@@ -143,7 +147,8 @@ func NewController(options *Options, kubeClientset kubernetes.Interface, crsmCli
 			},
 		})
 	if err != nil {
-		klog.Fatal(err)
+		logger.Error(err, "error setting up event handlers")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
 	return controller
@@ -296,7 +301,8 @@ func (c *Controller) syncHandler(ctx context.Context, key string, event string) 
 	}
 
 	// Get the CRSMR resource with this namespace and name.
-	resource, err := c.crsmInformerFactory.Crsm().V1alpha1().CustomResourceStateMetricsResources().Lister().CustomResourceStateMetricsResources(namespace).Get(name)
+	resource, err := c.crsmInformerFactory.Crsm().V1alpha1().CustomResourceStateMetricsResources().Lister().
+		CustomResourceStateMetricsResources(namespace).Get(name)
 	if err != nil {
 		if !errors.IsNotFound(err) {
 			return fmt.Errorf("error getting CustomResourceStateMetricsResource %q: %w", klog.KRef(namespace, name), err)

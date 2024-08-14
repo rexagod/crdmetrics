@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"reflect"
 	"regexp"
 	"strings"
 	"time"
@@ -126,13 +125,10 @@ func (h *crsmHandler) handleEvent(
 		}
 
 		// Compare resource with the fetched resource.
-		if !reflect.DeepEqual(gotResource.GetLabels(), resource.GetLabels()) ||
-			!reflect.DeepEqual(gotResource.GetOwnerReferences(), resource.GetOwnerReferences()) {
-			resource, err = h.crsmClientset.CrsmV1alpha1().CustomResourceStateMetricsResources(resource.GetNamespace()).
-				Update(ctx, resource, metav1.UpdateOptions{})
-			if err != nil {
-				return false, fmt.Errorf("failed to update %s: %w", kObj, err)
-			}
+		resource, err = h.crsmClientset.CrsmV1alpha1().CustomResourceStateMetricsResources(resource.GetNamespace()).
+			Update(ctx, resource, metav1.UpdateOptions{})
+		if err != nil {
+			return false, fmt.Errorf("failed to update %s: %w", kObj, err)
 		}
 
 		return true, nil
@@ -176,11 +172,22 @@ func (h *crsmHandler) handleEvent(
 		return nil
 	}
 
+	// dropStores drops associated stores between resource changes.
+	dropStores := func() {
+		resourceUID := resource.GetUID()
+		if _, ok = crsmUIDToStoresMap[resourceUID]; ok {
+
+			// The associated stores are only reachable through the map. Deleting them will trigger the GC.
+			delete(crsmUIDToStoresMap, resourceUID)
+		}
+	}
+
 	// Handle the event.
 	switch event {
 
 	// Build all associated stores.
 	case addEvent.String(), updateEvent.String():
+		dropStores()
 		err = activeConfigurer.parse(configurationYAML)
 		if err != nil {
 			logger.Error(fmt.Errorf("failed to parse configuration YAML: %w", err), "cannot process the resource")
@@ -191,12 +198,7 @@ func (h *crsmHandler) handleEvent(
 
 	// Drop all associated stores.
 	case deleteEvent.String():
-		resourceUID := resource.GetUID()
-		if _, ok = crsmUIDToStoresMap[resourceUID]; ok {
-
-			// The associated stores are only reachable through the map. Deleting them will trigger the GC.
-			delete(crsmUIDToStoresMap, resourceUID)
-		}
+		dropStores()
 
 	// This should never happen.
 	default:

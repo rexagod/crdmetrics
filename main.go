@@ -100,7 +100,8 @@ func main() {
 	}
 
 	// Start the controller.
-	if err = internal.NewController(options, kubeClientset, crsmClientset, dynamicClientset).Run(ctx, options.Workers); err != nil {
+	c := internal.NewController(ctx, options, kubeClientset, crsmClientset, dynamicClientset)
+	if err = c.Run(ctx, options.Workers); err != nil {
 		logger.Error(err, "Error running controller")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}

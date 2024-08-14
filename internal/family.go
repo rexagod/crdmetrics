@@ -2,10 +2,10 @@ package internal
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 )
 
 const (
@@ -45,38 +45,31 @@ func (f *FamilyType) rawWith(u *unstructured.Unstructured) (string, error) {
 		// Resolve the label values.
 		resolvedLabelValues := make([]string, 0, len(m.LabelValues))
 		for _, query := range m.LabelValues {
-			resolvedI, _, err := unstructured.NestedFieldNoCopy(u.Object, strings.Split(query, ".")...)
+			resolvedI, found, err := unstructured.NestedFieldNoCopy(u.Object, strings.Split(query, ".")...)
+			if !found {
+				resolvedI = query
+			}
 			if err != nil {
-				return "", fmt.Errorf("error resolving %s: %w", query, err)
+				utilruntime.HandleError(fmt.Errorf("error travesing object for label value %q: %w", query, err))
 			}
 			resolvedLabelValues = append(resolvedLabelValues, fmt.Sprintf("%v", resolvedI))
 		}
-		m.LabelValues = resolvedLabelValues
-
-		// Append GVK to the labelset.
-		m.LabelKeys = append(m.LabelKeys, "group", "version", "kind")
-		m.LabelValues = append(m.LabelValues, u.GroupVersionKind().Group, u.GroupVersionKind().Version, u.GroupVersionKind().Kind)
+		m.resolvedLabelValues = resolvedLabelValues
 
 		// Resolve the metric value.
-		var resolvedValue interface{}
-		var err error
-
-		// Check if the metric value string is a float64.
-		resolvedValue, err = strconv.ParseFloat(m.Value, 64)
-		if err != nil {
-
-			// Try to resolve the metric value otherwise.
-			resolvedValue, _, err = unstructured.NestedFieldNoCopy(u.Object, strings.Split(m.Value, ".")...)
-			if err != nil {
-				return "", fmt.Errorf("error resolving %s: %w", m.Value, err)
-			}
+		resolvedValue, found, err := unstructured.NestedFieldNoCopy(u.Object, strings.Split(m.Value, ".")...)
+		if !found {
+			resolvedValue = m.Value
 		}
-		m.Value = fmt.Sprintf("%v", resolvedValue)
+		if err != nil {
+			utilruntime.HandleError(fmt.Errorf("error travesing object for metric value %q: %w", m.Value, err))
+		}
+		m.resolvedValue = fmt.Sprintf("%v", resolvedValue)
 
 		// Write the metric.
 		s.WriteString(kubeCustomResourcePrefix)
 		s.WriteString(f.Name)
-		err = m.writeTo(&s)
+		err = m.writeTo(&s, u.GroupVersionKind().Group, u.GroupVersionKind().Version, u.GroupVersionKind().Kind)
 		if err != nil {
 			return "", fmt.Errorf("error writing %s metric: %w", f.Name, err)
 		}
