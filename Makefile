@@ -1,5 +1,4 @@
 # Variables are declared in the order in which they occur.
-ARCH ?= $(shell $(GO) env GOARCH)
 ASSETS_DIR ?= assets/
 BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
 BUILD_DATE ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
@@ -9,17 +8,21 @@ CONTROLLER_GEN ?= $(shell go env GOPATH)/bin/controller-gen
 CONTROLLER_GEN_APIS_DIR ?= pkg/apis
 CONTROLLER_GEN_OUT_DIR ?= /tmp/crsm/controller-gen
 CONTROLLER_GEN_VERSION ?= v0.15.0
+TEST_PKG ?= ./tests
+TEST_RUN_PATTERN ?= .
 LOCAL_NAMESPACE ?= default
 GIT_COMMIT = $(shell git rev-parse --short HEAD)
 GO ?= go
+GOFMT ?= gofmt
 GOLANGCI_LINT ?= $(shell go env GOPATH)/bin/golangci-lint
 GOLANGCI_LINT_CONFIG ?= .golangci.yaml
 GOLANGCI_LINT_VERSION ?= v1.54.2
 GO_FILES = $(shell find . -type d -name vendor -prune -o -type f -name "*.go" -print)
+KUBECTL ?= kubectl
 MARKDOWNFMT ?= $(shell go env GOPATH)/bin/markdownfmt
 MARKDOWNFMT_VERSION ?= v3.1.0
 MD_FILES = $(shell find . \( -type d -name 'vendor' -o -type d -name $(patsubst %/,%,$(patsubst ./%,%,$(ASSETS_DIR))) \) -prune -o -type f -name "*.md" -print)
-OS ?= $(shell uname -s | tr '[:upper:]' '[:lower:]')
+POD_NAMESPACE ?= default
 PPROF_OPTIONS ?=
 PPROF_PORT ?= 9998
 PROJECT_NAME = crsm
@@ -45,11 +48,11 @@ setup:
 	rm vale_$(VALE_VERSION)_$(VALE_ARCH).tar.gz && \
 	chmod +x $(VALE)
 	# Setup markdownfmt.
-	@GOOS=$(OS) GOARCH=$(ARCH) $(GO) install github.com/Kunde21/markdownfmt/v3/cmd/markdownfmt@$(MARKDOWNFMT_VERSION)
+	@$(GO) install github.com/Kunde21/markdownfmt/v3/cmd/markdownfmt@$(MARKDOWNFMT_VERSION)
 	# Setup golangci-lint.
-	@GOOS=$(OS) GOARCH=$(ARCH) $(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+	@$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 	# Setup controller-gen.
-	@GOOS=$(OS) GOARCH=$(ARCH) $(GO) install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION)
+	@$(GO) install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION)
 
 ##############
 # Generating #
@@ -79,7 +82,7 @@ image: $(PROJECT_NAME)
 	@docker build -t $(PROJECT_NAME):$(BUILD_TAG) .
 
 $(PROJECT_NAME): $(GO_FILES)
-	@GOOS=$(OS) GOARCH=$(ARCH) $(GO) build -a -installsuffix cgo -ldflags "-s -w \
+	@$(GO) build -a -installsuffix cgo -ldflags "-s -w \
 	-X ${COMMON}/version.Version=v${VERSION} \
 	-X ${COMMON}/version.Revision=${GIT_COMMIT} \
 	-X ${COMMON}/version.Branch=${BRANCH} \
@@ -99,24 +102,34 @@ load: image
 	@kind load docker-image $(PROJECT_NAME):$(BUILD_TAG)
 
 .PHONY: apply
-apply: manifests
-	# Deleting manifests/
-	@kubectl delete -f manifests/ || true
+apply: manifests delete
 	# Applying manifests/
-	@kubectl apply -f manifests/custom-resource-definition.yaml && \
-	kubectl apply -f manifests/
+	@$(KUBECTL) apply -f manifests/custom-resource-definition.yaml && \
+	$(KUBECTL) apply -f manifests/
+	# Applied manifests/
+
+.PHONY: delete
+delete:
+	# Deleting manifests/
+	@$(KUBECTL) delete -f manifests/ || true
+	# Deleted manifests/
 
 .PHONY: apply-testdata
-apply-testdata:
-	# Deleting testdata/
-	@kubectl delete -Rf testdata || true
+apply-testdata: delete-testdata
 	# Applying testdata/
-	@kubectl apply -f testdata/custom-resource-definition/ && \
-	kubectl apply -f testdata/custom-resource/
+	@$(KUBECTL) apply -f testdata/custom-resource-definition/ && \
+	$(KUBECTL) apply -f testdata/custom-resource/
+	# Applied testdata/
+
+.PHONY: delete-testdata
+delete-testdata:
+	# Deleting testdata/
+	@$(KUBECTL) delete -Rf testdata || true
+	# Deleted testdata/
 
 .PHONY: local
 local: vet manifests codegen $(PROJECT_NAME)
-	@kubectl scale deployment $(PROJECT_NAME)-controller --replicas=0 -n $(LOCAL_NAMESPACE) 2>/dev/null || true
+	@$(KUBECTL) scale deployment $(PROJECT_NAME)-controller --replicas=0 -n $(LOCAL_NAMESPACE) 2>/dev/null || true
 	@./$(PROJECT_NAME) -v=$(V) -kubeconfig $(KUBECONFIG)
 
 ###########
@@ -127,12 +140,16 @@ local: vet manifests codegen $(PROJECT_NAME)
 pprof:
 	@go tool pprof ":$(PPROF_PORT)" $(PPROF_OPTIONS)
 
-.PHONY: test-unit
-test-unit:
-	@GOOS=$(OS) GOARCH=$(ARCH) $(GO) test -v -race $(shell $(GO) list ./... | grep -v $(E2E_TEST_PKG))
-
 .PHONY: test
-test: test-unit
+test:
+	@\
+	POD_NAMESPACE=$(POD_NAMESPACE) \
+	CRSM_SELF_PORT=8887 \
+	CRSM_MAIN_PORT=8888 \
+	GO=$(GO) \
+	TEST_RUN_PATTERN=$(TEST_RUN_PATTERN) \
+	TEST_PKG=$(TEST_PKG) \
+	./tests/run.sh || true
 
 ###########
 # Linting #
@@ -148,8 +165,8 @@ clean:
 
 vale: .vale.ini $(MD_FILES)
 	@mkdir -p $(VALE_STYLES_DIR) && \
-	$(ASSETS_DIR)vale sync && \
-	$(ASSETS_DIR)vale $(MD_FILES)
+	$(ASSETS_DIR)$(VALE) sync && \
+	$(ASSETS_DIR)$(VALE) $(MD_FILES)
 
 markdownfmt: $(MD_FILES)
 	@test -z "$(shell $(MARKDOWNFMT) -l $(MD_FILES))" || (echo "\033[0;31mThe following files need to be formatted with 'markdownfmt -w -gofmt':" $(shell $(MARKDOWNFMT) -l $(MD_FILES)) "\033[0m" && exit 1)
@@ -164,10 +181,10 @@ lint-md: vale markdownfmt
 lint-md-fix: vale markdownfmt-fix
 
 gofmt: $(GO_FILES)
-	@test -z "$(shell gofmt -l $(GO_FILES))" || (echo "\033[0;31mThe following files need to be formatted with 'gofmt -w':" $(shell gofmt -l $(GO_FILES)) "\033[0m" && exit 1)
+	@test -z "$(shell $(GOFMT) -l $(GO_FILES))" || (echo "\033[0;31mThe following files need to be formatted with 'gofmt -w':" $(shell $(GOFMT) -l $(GO_FILES)) "\033[0m" && exit 1)
 
 gofmt-fix: $(GO_FILES)
-	@gofmt -w . || exit 1
+	@$(GOFMT) -w . || exit 1
 
 golangci-lint: $(GO_FILES)
 	@$(GOLANGCI_LINT) run -c $(GOLANGCI_LINT_CONFIG)

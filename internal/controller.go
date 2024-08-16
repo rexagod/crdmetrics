@@ -198,12 +198,20 @@ func (c *Controller) Run(ctx context.Context, workers int) error {
 
 	// Build servers.
 	c.crsmUIDToStores = make(map[types.UID][]*StoreType)
+	selfHost := *c.options.SelfHost
+	selfPort := *c.options.SelfPort
+	selfAddr := net.JoinHostPort(selfHost, strconv.Itoa(selfPort))
+	logger.V(1).Info("Configuring self server", "address", selfAddr)
 	selfInstance := newSelfServer(
-		net.JoinHostPort(c.options.SelfHost, strconv.Itoa(c.options.SelfPort)),
+		net.JoinHostPort(selfHost, strconv.Itoa(selfPort)),
 	)
 	self := selfInstance.build(ctx, c.kubeclientset, registry)
+	mainHost := *c.options.MainHost
+	mainPort := *c.options.MainPort
+	mainAddr := net.JoinHostPort(mainHost, strconv.Itoa(mainPort))
+	logger.V(1).Info("Configuring main server", "address", mainAddr)
 	mainInstance := newMainServer(
-		net.JoinHostPort(c.options.MainHost, strconv.Itoa(c.options.MainPort)),
+		mainAddr,
 		c.crsmUIDToStores,
 		requestDurationVec,
 	)
@@ -355,7 +363,7 @@ func (c *Controller) handleObject(ctx context.Context, objectI interface{}, even
 	switch o := object.(type) {
 	case *v1alpha1.CustomResourceStateMetricsResource:
 		handler := newCRSMHandler(c.kubeclientset, c.crsmClientset, c.dynamicClientset)
-		return handler.handleEvent(ctx, c.crsmUIDToStores, event, o, c.options.TryNoCache)
+		return handler.handleEvent(ctx, c.crsmUIDToStores, event, o, *c.options.TryNoCache)
 	default:
 		logger.Error(fmt.Errorf("unknown object type"), "cannot handle object")
 		return nil // Do not requeue.

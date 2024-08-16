@@ -98,6 +98,7 @@ func (cr *CELResolver) Resolve(query string, unstructuredObjectMap map[string]in
 	cr.logger = cr.logger.WithValues("query", query)
 
 	// Create a custom CEL environment.
+	// TODO: Investigate if this is a potential bottleneck.
 	env, err := cel.NewEnv(
 		cel.CrossTypeNumericComparisons(true),
 		cel.DefaultUTCTimeZone(true),

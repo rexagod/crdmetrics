@@ -47,11 +47,11 @@ func main() {
 
 	// Set up flags.
 	klog.InitFlags(flag.CommandLine)
-	options := internal.NewOptions()
+	options := internal.NewOptions(logger)
 	options.Read()
 
 	// Set GOMAXPROCS based on CPU quota.
-	if options.AutoGOMAXPROCS {
+	if *options.AutoGOMAXPROCS {
 		unset, err := maxprocs.Set(maxprocs.Logger(klog.Infof))
 		if err != nil {
 			logger.Error(err, "Error setting GOMAXPROCS")
@@ -63,7 +63,7 @@ func main() {
 	slogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	limit, err := memlimit.SetGoMemLimitWithOpts(
 		memlimit.WithLogger(slogger),
-		memlimit.WithRatio(options.RatioGOMEMLIMIT),
+		memlimit.WithRatio(*options.RatioGOMEMLIMIT),
 	)
 	if err != nil {
 		logger.Error(err, "Failed to set GOMEMLIMIT, skipping")
@@ -72,15 +72,15 @@ func main() {
 	}
 
 	// Quit if only version flag is set.
-	if options.Version && flag.NFlag() == 1 {
+	if *options.Version && flag.NFlag() == 1 {
 		fmt.Println(v.Version())
 		os.Exit(0)
 	}
 
 	// Build client-sets.
-	cfg, err := clientcmd.BuildConfigFromFlags(options.MasterURL, options.Kubeconfig)
+	cfg, err := clientcmd.BuildConfigFromFlags(*options.MasterURL, *options.Kubeconfig)
 	if err != nil {
-		logger.Error(err, "Error building kubeconfig", "kubeconfig", options.Kubeconfig)
+		logger.Error(err, "Error building kubeconfig", "kubeconfig", *options.Kubeconfig)
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 	kubeClientset, err := kubernetes.NewForConfig(cfg)
@@ -101,7 +101,7 @@ func main() {
 
 	// Start the controller.
 	c := internal.NewController(ctx, options, kubeClientset, crsmClientset, dynamicClientset)
-	if err = c.Run(ctx, options.Workers); err != nil {
+	if err = c.Run(ctx, *options.Workers); err != nil {
 		logger.Error(err, "Error running controller")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
