@@ -1,4 +1,4 @@
-package tests
+package crsm_test
 
 import (
 	"os"

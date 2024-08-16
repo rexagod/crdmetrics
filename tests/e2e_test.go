@@ -1,4 +1,4 @@
-package tests
+package crsm_test
 
 import (
 	"net/url"
@@ -10,9 +10,10 @@ import (
 )
 
 func TestMainServer(t *testing.T) {
-	r := framework.NewRunner()
+	t.Parallel()
 
 	// Test if /metrics response is as expected.
+	r := framework.NewRunner()
 	mainPort, found := os.LookupEnv(CRSM_MAIN_PORT)
 	if !found {
 		t.Fatal(CRSM_MAIN_PORT + "is not set")
@@ -46,6 +47,8 @@ kube_customresource_foo_replicas{name="example-foo",group="samplecontroller.k8s.
 }
 
 func TestSelfServer(t *testing.T) {
+	t.Parallel()
+
 	r := framework.NewRunner()
 	const httpRequestDurationSeconds = "http_request_duration_seconds"
 
@@ -64,9 +67,9 @@ func TestSelfServer(t *testing.T) {
 		t.Fatalf("failed to get metrics: %v", err)
 	}
 	inFlightDurationTotal := 0.0
-	inFlightDurationTotalPtr := telemetryMetrics[httpRequestDurationSeconds].Metric[0].Histogram.SampleSum
-	if inFlightDurationTotalPtr != nil {
-		inFlightDurationTotal = *inFlightDurationTotalPtr
+	inFlightDurationFamily, ok := telemetryMetrics[httpRequestDurationSeconds]
+	if ok {
+		inFlightDurationTotal = *inFlightDurationFamily.Metric[0].Histogram.SampleSum
 	}
 
 	// Ping main /metrics endpoint.

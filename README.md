@@ -1,6 +1,6 @@
 # `crsm`: Custom Resource State Metrics
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/rexagod/crsm)](https://goreportcard.com/report/github.com/rexagod/crsm) [![Go Reference](https://pkg.go.dev/badge/github.com/rexagod/crsm.svg)](https://pkg.go.dev/github.com/rexagod/crsm)
+[![CI](https://github.com/rexagod/crsm/actions/workflows/continuous-integration.yaml/badge.svg)](https://github.com/rexagod/crsm/actions/workflows/continuous-integration.yaml) [![Go Report Card](https://goreportcard.com/badge/github.com/rexagod/crsm)](https://goreportcard.com/report/github.com/rexagod/crsm) [![Go Reference](https://pkg.go.dev/badge/github.com/rexagod/crsm.svg)](https://pkg.go.dev/github.com/rexagod/crsm)
 
 ## Summary
 
@@ -29,9 +29,9 @@ For more details, take a look at the [Makefile](Makefile) targets.
 
 In the order of priority:
 
-- [x] CEL expressions for metric generation (or [*unstructured.Unstructured](https://github.com/kubernetes/apimachinery/issues/181), if that suffices).
-- [ ] Conformance tests covering Kube-State-Metrics' Custom Resource State's test cases.
-- [ ] E2E tests covering the controller's functionality.
+- [X] CEL expressions for metric generation (or [*unstructured.Unstructured](https://github.com/kubernetes/apimachinery/issues/181), if that suffices).
+- [ ] Conformance tests and benchmarks for Kube-State-Metrics' [Custom Resource State API](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/extend/customresourcestate-metrics.md#multiple-metricskitchen-sink).
+- [X] E2E tests covering the controller's basic functionality.
 - [ ] [Graduate to ALPHA](https://github.com/kubernetes/enhancements/issues/4785).
 - [ ] gRPC server for metrics generation.
 

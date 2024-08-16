@@ -1,12 +1,13 @@
 module github.com/rexagod/crsm
 
-go 1.21
+go 1.22
 
 require (
 	github.com/KimMachineGun/automemlimit v0.6.1
 	github.com/google/cel-go v0.21.0
 	github.com/google/go-cmp v0.6.0
 	github.com/prometheus/client_golang v1.19.1
+	github.com/prometheus/client_model v0.5.0
 	github.com/prometheus/common v0.48.0
 	go.uber.org/automaxprocs v1.5.3
 	golang.org/x/time v0.3.0
@@ -51,7 +52,6 @@ require (
 	github.com/opencontainers/runtime-spec v1.0.2 // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/prometheus/client_model v0.5.0 // indirect
 	github.com/prometheus/procfs v0.12.0 // indirect
 	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect

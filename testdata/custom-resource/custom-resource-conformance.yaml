@@ -1,0 +1,79 @@
+
+---
+apiVersion: crsm.instrumentation.k8s-sigs.io/v1alpha1
+kind: CustomResourceStateMetricsResource
+metadata:
+  name: custom-resource-state-metrics-resource-conformance
+  namespace: default
+spec:
+  # NOTE: "unstructured" is the default resolver.
+  # CRSMR's equivalent representation for KSM's CRS feature-set:
+  # kind: CustomResourceStateMetrics
+  # spec:
+  #   resources:
+  #     - groupVersionKind:
+  #         group: myteam.io
+  #         kind: "Foo"
+  #         version: "v1"
+  #       # labels can be added to all metrics from a resource
+  #       commonLabels:
+  #         crd_type: "foo"
+  #       labelsFromPath:
+  #         name: [metadata, name]
+  #       metrics:
+  #         - name: "ready_count"
+  #           help: "Number Foo Bars ready"
+  #           each:
+  #             type: Gauge
+  #             gauge:
+  #               # targeting an object or array will produce a metric for each element
+  #               # labelsFromPath and value are relative to this path
+  #               path: [status, sub]
+  #               # if path targets an object, the object key will be used as label value
+  #               # This is not supported for StateSet type as all values will be truthy, which is redundant.
+  #               labelFromKey: type
+  #               # label values can be resolved specific to this path
+  #               labelsFromPath:
+  #                 active: [active]
+  #               # The actual field to use as metric value. Should be a number, boolean or RFC3339 timestamp string.
+  #               valueFrom: [ready]
+  #           commonLabels:
+  #             custom_metric: "yes"
+  #           labelsFromPath:
+  #             # whole objects may be copied into labels by prefixing with "*"
+  #             # *anything will be copied into labels, with the highest sorted * strings first
+  #             "*": [metadata, labels]
+  #             # a prefix before the asterisk will be used as a label prefix
+  #             "lorem_*": [metadata, annotations]
+  #             "**": [metadata, annotations]
+  #             # or specific fields may be copied. these fields will always override values from *s
+  #             name: [metadata, name]
+  #             foo: [metadata, labels, foo]
+  customResourceStateMetricsConfigurationYAML: |-
+    stores:
+      - g: "contoso.com"
+        v: "v1alpha1"
+        k: "MyPlatform"
+        r: "myplatforms"
+        labelKeysStatic:
+          - "job"
+        labelValuesStatic:
+          - "crsm"
+        resolver: "cel"
+        families:
+          - name: "platform_info"
+            help: "Information about each MyPlatform instance"
+            labelKeysStatic:
+              - "userid"
+            labelValuesStatic:
+              - "1000"
+            metrics:
+              - labelKeys: 
+                  - "name"
+                  - ""
+                  - "annotation_"
+                labelValues:
+                  - "o.metadata.name"
+                  - "o.metadata.labels"
+                  - "o.metadata.annotations"
+                value: "o.metadata.labels.bar"

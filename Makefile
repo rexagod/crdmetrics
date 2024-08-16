@@ -1,5 +1,5 @@
 # Variables are declared in the order in which they occur.
-ASSETS_DIR ?= assets/
+ASSETS_DIR ?= assets
 BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
 BUILD_DATE ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 BUILD_TAG ?= $(shell git describe --tags --exact-match 2>/dev/null || echo "latest")
@@ -10,6 +10,7 @@ CONTROLLER_GEN_OUT_DIR ?= /tmp/crsm/controller-gen
 CONTROLLER_GEN_VERSION ?= v0.15.0
 TEST_PKG ?= ./tests
 TEST_RUN_PATTERN ?= .
+TEST_TIMEOUT ?= 240
 LOCAL_NAMESPACE ?= default
 GIT_COMMIT = $(shell git rev-parse --short HEAD)
 GO ?= go
@@ -28,7 +29,7 @@ PPROF_PORT ?= 9998
 PROJECT_NAME = crsm
 RUNNER = $(shell id -u -n)@$(shell hostname)
 V ?= 4
-VALE ?= $(ASSETS_DIR)vale
+VALE ?= vale
 VALE_ARCH ?= $(if $(filter $(shell uname -m),arm64),macOS_arm64,Linux_64-bit)
 VALE_STYLES_DIR ?= /tmp/.vale/styles
 VALE_VERSION ?= 3.1.0
@@ -46,7 +47,7 @@ setup:
 	@wget https://github.com/errata-ai/vale/releases/download/v$(VALE_VERSION)/vale_$(VALE_VERSION)_$(VALE_ARCH).tar.gz && \
 	mkdir -p assets && tar -xvzf vale_$(VALE_VERSION)_$(VALE_ARCH).tar.gz -C $(ASSETS_DIR) && \
 	rm vale_$(VALE_VERSION)_$(VALE_ARCH).tar.gz && \
-	chmod +x $(VALE)
+	chmod +x $(ASSETS_DIR)/$(VALE)
 	# Setup markdownfmt.
 	@$(GO) install github.com/Kunde21/markdownfmt/v3/cmd/markdownfmt@$(MARKDOWNFMT_VERSION)
 	# Setup golangci-lint.
@@ -147,9 +148,10 @@ test:
 	CRSM_SELF_PORT=8887 \
 	CRSM_MAIN_PORT=8888 \
 	GO=$(GO) \
+	TEST_TIMEOUT=$(TEST_TIMEOUT) \
 	TEST_RUN_PATTERN=$(TEST_RUN_PATTERN) \
 	TEST_PKG=$(TEST_PKG) \
-	./tests/run.sh || true
+	timeout --signal SIGINT --preserve-status $(TEST_TIMEOUT) ./tests/run.sh
 
 ###########
 # Linting #
@@ -165,8 +167,8 @@ clean:
 
 vale: .vale.ini $(MD_FILES)
 	@mkdir -p $(VALE_STYLES_DIR) && \
-	$(ASSETS_DIR)$(VALE) sync && \
-	$(ASSETS_DIR)$(VALE) $(MD_FILES)
+	$(ASSETS_DIR)/$(VALE) sync && \
+	$(ASSETS_DIR)/$(VALE) $(MD_FILES)
 
 markdownfmt: $(MD_FILES)
 	@test -z "$(shell $(MARKDOWNFMT) -l $(MD_FILES))" || (echo "\033[0;31mThe following files need to be formatted with 'markdownfmt -w -gofmt':" $(shell $(MARKDOWNFMT) -l $(MD_FILES)) "\033[0m" && exit 1)

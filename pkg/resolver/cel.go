@@ -54,6 +54,9 @@ type resolverPrinter struct {
 var _ fmt.Formatter = resolverPrinter{}
 
 // Format formats the given verb.
+// nolint: godox
+// TODO: If the output is not a non-composite, create label keys and values (using the given labelKey as prefix, which
+// also implies labelKeys maybe empty)?
 func (rp resolverPrinter) Format(f fmt.State, verb rune) {
 	s := ""
 	switch verb {
@@ -98,6 +101,7 @@ func (cr *CELResolver) Resolve(query string, unstructuredObjectMap map[string]in
 	cr.logger = cr.logger.WithValues("query", query)
 
 	// Create a custom CEL environment.
+	// nolint: godox
 	// TODO: Investigate if this is a potential bottleneck.
 	env, err := cel.NewEnv(
 		cel.CrossTypeNumericComparisons(true),

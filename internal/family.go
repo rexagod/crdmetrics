@@ -22,6 +22,8 @@ const (
 )
 
 // ResolverType represents the type of resolver to use to evaluate the labelset expressions.
+// nolint: godox
+// TODO: Allow setting resolver in higher hierarchy (e.g. family) and inherit it in the metrics.
 type ResolverType string
 
 const (
