@@ -9,6 +9,7 @@ linters:
     - exhaustruct
     - goerr113
     - gci
+    - makezero
   presets:
     - bugs
     - comment

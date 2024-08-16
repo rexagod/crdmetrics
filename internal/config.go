@@ -23,15 +23,8 @@ type configure interface {
 	build(map[types.UID][]*StoreType, bool)
 }
 
-const (
-	configTypeCEL = iota
-)
-
-var configTypes = []string{"cel"}
-
 // configuration defines the structured representation of a CEL-based YAML configuration.
 type configuration struct {
-	T      string       `yaml:"type,omitempty"`
 	Stores []*StoreType `yaml:"stores"`
 }
 

@@ -5,7 +5,8 @@ import (
 	"strings"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+
+	"github.com/rexagod/crsm/pkg/resolver"
 )
 
 const (
@@ -18,6 +19,15 @@ const (
 	// In convention with kube-state-metrics, we prefix all metrics with `kube_customresource_` to explicitly denote
 	// that these are custom resource user-generated metrics (and have no stability).
 	kubeCustomResourcePrefix = "kube_customresource_"
+)
+
+// ResolverType represents the type of resolver to use to evaluate the labelset expressions.
+type ResolverType string
+
+const (
+
+	// ResolverTypeCEL represents the CEL resolver.
+	ResolverTypeCEL ResolverType = "cel"
 )
 
 // FamilyType represents a metric family (a group of metrics with the same name).
@@ -42,34 +52,29 @@ func (f *FamilyType) rawWith(u *unstructured.Unstructured) (string, error) {
 	s := strings.Builder{}
 	for _, m := range f.Metrics {
 
+		// Choose the resolver.
+		var resolverInstance resolver.Resolver
+		switch m.Resolver {
+		case ResolverTypeCEL:
+			resolverInstance = resolver.NewCELResolver()
+		default:
+			resolverInstance = resolver.NewUnstructuredResolver()
+		}
+
 		// Resolve the label values.
 		resolvedLabelValues := make([]string, 0, len(m.LabelValues))
 		for _, query := range m.LabelValues {
-			resolvedI, found, err := unstructured.NestedFieldNoCopy(u.Object, strings.Split(query, ".")...)
-			if !found {
-				resolvedI = query
-			}
-			if err != nil {
-				utilruntime.HandleError(fmt.Errorf("error travesing object for label value %q: %w", query, err))
-			}
-			resolvedLabelValues = append(resolvedLabelValues, fmt.Sprintf("%v", resolvedI))
+			resolvedLabelValues = append(resolvedLabelValues, resolverInstance.Resolve(query, u.Object))
 		}
 		m.resolvedLabelValues = resolvedLabelValues
 
 		// Resolve the metric value.
-		resolvedValue, found, err := unstructured.NestedFieldNoCopy(u.Object, strings.Split(m.Value, ".")...)
-		if !found {
-			resolvedValue = m.Value
-		}
-		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("error travesing object for metric value %q: %w", m.Value, err))
-		}
-		m.resolvedValue = fmt.Sprintf("%v", resolvedValue)
+		m.resolvedValue = resolverInstance.Resolve(m.Value, u.Object)
 
 		// Write the metric.
 		s.WriteString(kubeCustomResourcePrefix)
 		s.WriteString(f.Name)
-		err = m.writeTo(&s, u.GroupVersionKind().Group, u.GroupVersionKind().Version, u.GroupVersionKind().Kind)
+		err := m.writeTo(&s, u.GroupVersionKind().Group, u.GroupVersionKind().Version, u.GroupVersionKind().Kind)
 		if err != nil {
 			return "", fmt.Errorf("error writing %s metric: %w", f.Name, err)
 		}

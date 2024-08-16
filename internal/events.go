@@ -161,17 +161,6 @@ func (h *crsmHandler) handleEvent(
 	}
 	configurerInstance := newConfigurer(ctx, h.dynamicClientset, resource)
 
-	// Choose a configurer.
-	var activeConfigurer configure
-	switch strings.ToLower(configurerInstance.configuration.T) {
-	case configTypes[configTypeCEL], "":
-		activeConfigurer = configurerInstance
-	default:
-		logger.Error(fmt.Errorf("unknown configuration type (%s)", configurerInstance.configuration.T), "cannot process the resource")
-		h.emitFailureOnResource(ctx, kObj, resource, fmt.Sprintf("Unknown configuration type: %s", configurerInstance.configuration.T))
-		return nil
-	}
-
 	// dropStores drops associated stores between resource changes.
 	dropStores := func() {
 		resourceUID := resource.GetUID()
@@ -188,13 +177,13 @@ func (h *crsmHandler) handleEvent(
 	// Build all associated stores.
 	case addEvent.String(), updateEvent.String():
 		dropStores()
-		err = activeConfigurer.parse(configurationYAML)
+		err = configurerInstance.parse(configurationYAML)
 		if err != nil {
 			logger.Error(fmt.Errorf("failed to parse configuration YAML: %w", err), "cannot process the resource")
 			h.emitFailureOnResource(ctx, kObj, resource, fmt.Sprintf("Failed to parse configuration YAML: %s", err))
 			return nil
 		}
-		activeConfigurer.build(crsmUIDToStoresMap, tryNoCache)
+		configurerInstance.build(crsmUIDToStoresMap, tryNoCache)
 
 	// Drop all associated stores.
 	case deleteEvent.String():

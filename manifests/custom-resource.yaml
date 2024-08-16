@@ -6,8 +6,8 @@ metadata:
   name: custom-resource-state-metrics-resource-sample
   namespace: default
 spec:
+  # NOTE: "unstructured" is the default resolver.
   customResourceStateMetricsConfigurationYAML: |-
-    type: cel
     stores:
       - g: "contoso.com"
         v: "v1alpha1"
@@ -19,11 +19,12 @@ spec:
           - name: "platform_info"
             help: "Information about each MyPlatform instance"
             metrics:
-              - labelKeys: 
+              - resolver: "cel"
+                labelKeys: 
                   - "name"
                 labelValues:
-                  - "metadata.name"
-                value: "metadata.labels.bar"
+                  - "o.metadata.name"
+                value: "o.metadata.labels.bar"
               - labelKeys: 
                   - "environmentType"
                   - "language"
@@ -49,10 +50,17 @@ spec:
           - name: "foos_info"
             help: "Information about each Foo instance"
             metrics:
-              - labelKeys: 
-                  - "name"
+              - resolver: "cel"
+                labelKeys: 
+                  - "dynamicShouldResolveToName"
+                  - "static"
+                  - "dynamicNoResolveShouldRemainTheSame1"
+                  - "dynamicNoResolveShouldRemainTheSame2"
                 labelValues:
-                  - "metadata.name"
+                  - "o.metadata.name"
+                  - "43-1"
+                  - "o.metadata.labels.baz"
+                  - "metadata.labels.baz"
                 value: "42"
           - name: "foo_replicas"
             help: "Number of replicas for each Foo instance"
