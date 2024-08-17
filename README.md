@@ -30,9 +30,10 @@ For more details, take a look at the [Makefile](Makefile) targets.
 In the order of priority:
 
 - [X] CEL expressions for metric generation (or [*unstructured.Unstructured](https://github.com/kubernetes/apimachinery/issues/181), if that suffices).
-- [ ] Conformance tests and benchmarks for Kube-State-Metrics' [Custom Resource State API](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/extend/customresourcestate-metrics.md#multiple-metricskitchen-sink).
+- [X] Conformance test(s) for Kube-State-Metrics' [Custom Resource State API](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/extend/customresourcestate-metrics.md#multiple-metricskitchen-sink).
+- [ ] Benchmark(s) for Kube-State-Metrics' [Custom Resource State API](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/extend/customresourcestate-metrics.md#multiple-metricskitchen-sink).
 - [X] E2E tests covering the controller's basic functionality.
-- [ ] [Graduate to ALPHA](https://github.com/kubernetes/enhancements/issues/4785).
+- [ ] [Graduate to ALPHA](https://github.com/kubernetes/enhancements/issues/4785), i.e., draft out a KEP.
 - [ ] gRPC server for metrics generation.
 
 ###### [License](./LICENSE)

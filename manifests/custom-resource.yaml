@@ -37,8 +37,10 @@ spec:
             metrics:
               - labelKeys: 
                   - "name"
+                  - "dynamicNoResolveShouldRemainTheSame_CompositeUnsupportedUpstream"
                 labelValues:
                   - "metadata.name"
+                  - "metadata.labels"
                 value: "spec.replicas"
       - g: "samplecontroller.k8s.io"
         v: "v1alpha1"
@@ -70,3 +72,29 @@ spec:
                 labelValues:
                   - "metadata.name"
                 value: "spec.replicas"
+      - resolver: "cel"
+        g: "contoso.com"
+        v: "v1alpha1"
+        k: "MyPlatform"
+        r: "myplatforms"
+        labelKeys:
+          - "job"
+        labelValues:
+          - "o.metadata.labels.job"
+        families:
+          - name: "platform_info_conformance"
+            help: "Information about each MyPlatform instance (using existing exhaustive CRS feature-set for conformance)"
+            labelKeys:
+              - "id"
+            labelValues:
+              - "o.metadata.annotations.id"
+            metrics:
+              - labelKeys: 
+                  - "name"
+                  - "label_"
+                  - ""
+                labelValues:
+                  - "o.metadata.name"
+                  - "o.metadata.labels"
+                  - "o.spec"
+                value: "o.metadata.labels.bar"

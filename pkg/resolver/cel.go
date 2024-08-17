@@ -2,8 +2,8 @@ package resolver
 
 import (
 	"fmt"
+	"strconv"
 
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/klog/v2"
 
 	"github.com/google/cel-go/cel"
@@ -21,8 +21,8 @@ type CELResolver struct {
 var _ Resolver = &CELResolver{}
 
 // NewCELResolver returns a new CEL resolver.
-func NewCELResolver() *CELResolver {
-	return &CELResolver{}
+func NewCELResolver(logger klog.Logger) *CELResolver {
+	return &CELResolver{logger: logger}
 }
 
 // costEstimator helps estimate the runtime cost of CEL queries.
@@ -43,61 +43,8 @@ func (ce costEstimator) CallCost(function, _ string, args []ref.Val, result ref.
 	return &estimatedCost
 }
 
-// resolverPrinter knows how to handle various types returned by the CEL evaluator. This is used instead of CEL's
-// `ConvertToNative` to be able to define custom printing logic for types that the API doesn't support (for e.g., maps).
-type resolverPrinter struct {
-	Name string
-	Out  ref.Val
-}
-
-// resolverPrinter implements fmt.Formatter.
-var _ fmt.Formatter = resolverPrinter{}
-
-// Format formats the given verb.
-// nolint: godox
-// TODO: If the output is not a non-composite, create label keys and values (using the given labelKey as prefix, which
-// also implies labelKeys maybe empty)?
-func (rp resolverPrinter) Format(f fmt.State, verb rune) {
-	s := ""
-	switch verb {
-	case 'v':
-		switch rp.Out.Type() {
-		case types.ListType:
-			l := rp.Out.Value().([]interface{})
-			for _, el := range l {
-				s += fmt.Sprintf("%v ", el)
-			}
-		case types.MapType:
-			m := rp.Out.Value().(map[string]interface{})
-			for _, v := range m {
-				switch v.(type) {
-
-				// Only print non-composites' values for maps.
-				case string, int, float64, bool:
-					s += fmt.Sprintf("%v ", v)
-				default:
-					utilruntime.HandleError(fmt.Errorf("unsupported type %T in map", v))
-				}
-			}
-		default: // For all other types, print the %v representation as is.
-			s = fmt.Sprintf("%v", rp.Out.Value())
-		}
-	default: // For all other verbs, print the %v representation as is.
-		n, err := fmt.Fprintf(f, "%v", rp.Out.Value())
-		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("error formatting %q after %d bytes: %w", rp.Name, n, err))
-		}
-		return
-	}
-
-	n, err := fmt.Fprintf(f, "%s", s)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("error formatting %q after %d bytes: %w", rp.Name, n, err))
-	}
-}
-
 // Resolve resolves the given query against the given unstructured object.
-func (cr *CELResolver) Resolve(query string, unstructuredObjectMap map[string]interface{}) string {
+func (cr *CELResolver) Resolve(query string, unstructuredObjectMap map[string]interface{}) map[string]string {
 	cr.logger = cr.logger.WithValues("query", query)
 
 	// Create a custom CEL environment.
@@ -109,15 +56,15 @@ func (cr *CELResolver) Resolve(query string, unstructuredObjectMap map[string]in
 		cel.EagerlyValidateDeclarations(true),
 	)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("error creating CEL environment: %w", err))
-		return query
+		cr.logger.Error(fmt.Errorf("error creating CEL environment: %w", err), "ignoring resolution for query")
+		return map[string]string{query: query}
 	}
 
 	// Parse.
 	ast, iss := env.Parse(query)
 	if iss.Err() != nil {
-		utilruntime.HandleError(fmt.Errorf("error parsing CEL query: %w", iss.Err()))
-		return query
+		cr.logger.Error(fmt.Errorf("error parsing CEL query: %w", iss.Err()), "ignoring resolution for query")
+		return map[string]string{query: query}
 	}
 
 	// Compile.
@@ -131,8 +78,8 @@ func (cr *CELResolver) Resolve(query string, unstructuredObjectMap map[string]in
 		cel.CostTracking(new(costEstimator)),
 	)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("error compiling CEL query: %w", err))
-		return query
+		cr.logger.Error(fmt.Errorf("error compiling CEL query: %w", err), "ignoring resolution for query")
+		return map[string]string{query: query}
 	}
 
 	// Inject the object and evaluate.
@@ -150,13 +97,44 @@ func (cr *CELResolver) Resolve(query string, unstructuredObjectMap map[string]in
 		)
 	}
 	if err != nil {
-		cr.logger.Info("ignoring resolution for query")
-		return query
+		cr.logger.V(1).Info("ignoring resolution for query", "info", err)
+		return map[string]string{query: query}
 	}
 	cr.logger.V(4).Info("CEL query runtime cost")
 
-	return fmt.Sprintf("%v", resolverPrinter{
-		Name: query,
-		Out:  out,
-	})
+	switch out.Type() {
+	case types.BoolType, types.DoubleType, types.IntType, types.StringType, types.UintType:
+
+		// If the output is a primitive type, return the query and the resolved value.
+		return map[string]string{query: fmt.Sprintf("%v", out.Value())}
+
+	case types.MapType:
+		m := map[string]string{}
+		for k, v := range out.Value().(map[string]interface{}) {
+			switch v.(type) {
+			case string, int, uint, float64, bool:
+
+				// Even in cases where the parent and immediate child have the same key, the "o" prefix in CEL queries will prevent any collision.
+				m[k] = fmt.Sprintf("%v", v)
+			default:
+				cr.logger.V(1).Error(fmt.Errorf("encountered composite value %q at key %q, skipping", v, k), "ignoring resolution for query")
+			}
+		}
+		return m
+	case types.ListType:
+		m := map[string]string{}
+		for i, v := range out.Value().([]interface{}) {
+			switch v.(type) {
+			case string, int, uint, float64, bool:
+				m[strconv.Itoa(i)] = fmt.Sprintf("%v", v)
+			default:
+				cr.logger.V(1).Error(fmt.Errorf("encountered composite value %q at index %d, skipping", v, i), "ignoring resolution for query")
+			}
+		}
+		return m
+	default:
+		cr.logger.Error(fmt.Errorf("unsupported output type %q", out.Type()), "ignoring resolution for query")
+	}
+
+	return map[string]string{query: query}
 }

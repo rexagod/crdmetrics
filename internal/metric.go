@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -13,39 +14,34 @@ type MetricType struct {
 	LabelKeys []string `yaml:"labelKeys"`
 
 	// LabelValues is the set of label values.
-	LabelValues         []string `yaml:"labelValues"`
-	resolvedLabelValues []string
+	LabelValues []string `yaml:"labelValues"`
 
 	// Value is the metric Value.
-	Value         string `yaml:"value"`
-	resolvedValue string
+	Value string `yaml:"value"`
 
 	// Resolver is the resolver to use to evaluate the labelset expressions.
 	Resolver ResolverType `yaml:"resolver"`
 }
 
-// writeTo writes the given metric to the given strings.Builder.
-func (m MetricType) writeTo(s *strings.Builder, g, v, k string) error {
-	if len(m.LabelKeys) != len(m.resolvedLabelValues) {
-		return fmt.Errorf("expected labelKeys %q to be of same length (%d) as the resolved labelValues %q (%d)", m.LabelKeys, len(m.LabelKeys), m.resolvedLabelValues, len(m.resolvedLabelValues))
+// writeMetricTo writes the given metric to the given strings.Builder.
+func writeMetricTo(s *strings.Builder, g, v, k, resolvedValue string, resolvedLabelKeys, resolvedLabelValues []string) error {
+	if len(resolvedLabelKeys) != len(resolvedLabelValues) {
+		return fmt.Errorf("expected labelKeys %q to be of same length (%d) as the resolved labelValues %q (%d)", resolvedLabelKeys, len(resolvedLabelKeys), resolvedLabelValues, len(resolvedLabelValues))
 	}
 
-	// Copy labelset to avoid modifying the original.
-	labelKeys := make([]string, len(m.LabelKeys))
-	resolvedLabelValues := make([]string, len(m.resolvedLabelValues))
-	copy(labelKeys, m.LabelKeys)
-	copy(resolvedLabelValues, m.resolvedLabelValues)
+	// Sort the label keys and values. This preserves order and helps test deterministically.
+	sortLabelset(resolvedLabelKeys, resolvedLabelValues)
 
 	// Append GVK metadata to the metric.
-	labelKeys = append(labelKeys, "group", "version", "kind")
+	resolvedLabelKeys = append(resolvedLabelKeys, "group", "version", "kind")
 	resolvedLabelValues = append(resolvedLabelValues, g, v, k)
 
 	// Write the metric.
-	if len(labelKeys) > 0 {
+	if len(resolvedLabelKeys) > 0 {
 		separator := "{"
-		for i := 0; i < len(labelKeys); i++ {
+		for i := 0; i < len(resolvedLabelKeys); i++ {
 			s.WriteString(separator)
-			s.WriteString(labelKeys[i])
+			s.WriteString(resolvedLabelKeys[i])
 			s.WriteString("=\"")
 			n, err := strings.NewReplacer("\\", `\\`, "\n", `\n`, "\"", `\"`).WriteString(s, resolvedLabelValues[i])
 			if err != nil {
@@ -57,9 +53,9 @@ func (m MetricType) writeTo(s *strings.Builder, g, v, k string) error {
 		s.WriteString("}")
 	}
 	s.WriteByte(' ')
-	metricValueAsFloat, err := strconv.ParseFloat(m.resolvedValue, 64)
+	metricValueAsFloat, err := strconv.ParseFloat(resolvedValue, 64)
 	if err != nil {
-		return fmt.Errorf("error parsing metric value %q as float64: %w", m.resolvedValue, err)
+		return fmt.Errorf("error parsing metric value %q as float64: %w", resolvedValue, err)
 	}
 	n, err := fmt.Fprintf(s, "%f", metricValueAsFloat)
 	if err != nil {
@@ -68,4 +64,33 @@ func (m MetricType) writeTo(s *strings.Builder, g, v, k string) error {
 	s.WriteByte('\n')
 
 	return nil
+}
+
+// sortLabelset sorts the label keys and values while preserving order.
+func sortLabelset(resolvedLabelKeys, resolvedLabelValues []string) {
+
+	// Populate.
+	type labelset struct {
+		labelKey   string
+		labelValue string
+	}
+	labelsets := make([]labelset, len(resolvedLabelKeys))
+	for i := range resolvedLabelKeys {
+		labelsets[i] = labelset{labelKey: resolvedLabelKeys[i], labelValue: resolvedLabelValues[i]}
+	}
+
+	// Sort.
+	sort.Slice(labelsets, func(i, j int) bool {
+		a, b := labelsets[i].labelKey, labelsets[j].labelKey
+		if len(a) == len(b) {
+			return a < b
+		}
+		return len(a) < len(b)
+	})
+
+	// Re-populate.
+	for i := range labelsets {
+		resolvedLabelKeys[i] = labelsets[i].labelKey
+		resolvedLabelValues[i] = labelsets[i].labelValue
+	}
 }

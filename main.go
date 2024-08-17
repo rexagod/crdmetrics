@@ -68,7 +68,7 @@ func main() {
 	if err != nil {
 		logger.Error(err, "Failed to set GOMEMLIMIT, skipping")
 	} else {
-		logger.Info("GOMEMLIMIT set", "limit", limit)
+		logger.V(1).Info("GOMEMLIMIT set", "limit", limit)
 	}
 
 	// Quit if only version flag is set.

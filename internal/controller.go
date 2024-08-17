@@ -18,6 +18,7 @@ package internal
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"net"
 	"os"
@@ -178,7 +179,7 @@ func (c *Controller) Run(ctx context.Context, workers int) error {
 	// Start the informer factories to begin populating the informer caches.
 	c.crsmInformerFactory.Start(ctx.Done())
 	if ok := cache.WaitForCacheSync(ctx.Done(), c.crsmInformerFactory.Crsm().V1alpha1().CustomResourceStateMetricsResources().Informer().HasSynced); !ok {
-		return fmt.Errorf("failed to wait for caches to sync")
+		return stderrors.New("failed to wait for caches to sync")
 	}
 
 	// Build the telemetry registry.
@@ -328,7 +329,7 @@ func (c *Controller) handleObject(ctx context.Context, objectI interface{}, even
 
 	// Check if the object is nil, and if so, handle it.
 	if objectI == nil {
-		logger.Error(fmt.Errorf("received nil object for handling, skipping"), "error handling object")
+		logger.Error(stderrors.New("received nil object for handling, skipping"), "error handling object")
 
 		// No point in re-queueing.
 		return nil
@@ -342,14 +343,14 @@ func (c *Controller) handleObject(ctx context.Context, objectI interface{}, even
 	if object, ok = objectI.(metav1.Object); !ok {
 		tombstone, ok := objectI.(cache.DeletedFinalStateUnknown)
 		if !ok {
-			logger.Error(fmt.Errorf("error decoding object, invalid type"), "error handling object")
+			logger.Error(stderrors.New("error decoding object, invalid type"), "error handling object")
 
 			// No point in re-queueing.
 			return nil
 		}
 		object, ok = tombstone.Obj.(metav1.Object)
 		if !ok {
-			logger.Error(fmt.Errorf("error decoding object tombstone, invalid type"), "error handling object")
+			logger.Error(stderrors.New("error decoding object tombstone, invalid type"), "error handling object")
 
 			// No point in re-queueing.
 			return nil
@@ -365,7 +366,7 @@ func (c *Controller) handleObject(ctx context.Context, objectI interface{}, even
 		handler := newCRSMHandler(c.kubeclientset, c.crsmClientset, c.dynamicClientset)
 		return handler.handleEvent(ctx, c.crsmUIDToStores, event, o, *c.options.TryNoCache)
 	default:
-		logger.Error(fmt.Errorf("unknown object type"), "cannot handle object")
+		logger.Error(stderrors.New("unknown object type"), "cannot handle object")
 		return nil // Do not requeue.
 	}
 }

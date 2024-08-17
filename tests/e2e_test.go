@@ -30,16 +30,19 @@ func TestMainServer(t *testing.T) {
 	wantRaw := `# HELP kube_customresource_platform_info Information about each MyPlatform instance
 # TYPE kube_customresource_platform_info gauge
 kube_customresource_platform_info{name="test-dotnet-app",group="contoso.com",version="v1alpha1",kind="MyPlatform"} 2.000000
-kube_customresource_platform_info{environmentType="dev",language="csharp",group="contoso.com",version="v1alpha1",kind="MyPlatform"} 1.000000
+kube_customresource_platform_info{language="csharp",environmenttype="dev",group="contoso.com",version="v1alpha1",kind="MyPlatform"} 1.000000
 # HELP kube_customresource_platform_replicas Number of replicas for each MyPlatform instance
 # TYPE kube_customresource_platform_replicas gauge
-kube_customresource_platform_replicas{name="test-dotnet-app",group="contoso.com",version="v1alpha1",kind="MyPlatform"} 3.000000
+kube_customresource_platform_replicas{name="test-dotnet-app",dynamicnoresolveshouldremainthesame_compositeunsupportedupstream="map[bar:2 foo:1 job:crsm]",group="contoso.com",version="v1alpha1",kind="MyPlatform"} 3.000000
 # HELP kube_customresource_foos_info Information about each Foo instance
 # TYPE kube_customresource_foos_info gauge
-kube_customresource_foos_info{dynamicShouldResolveToName="example-foo",static="42",dynamicNoResolveShouldRemainTheSame1="o.metadata.labels.baz",dynamicNoResolveShouldRemainTheSame2="metadata.labels.baz",group="samplecontroller.k8s.io",version="v1alpha1",kind="Foo"} 42.000000
+kube_customresource_foos_info{static="42",dynamicshouldresolvetoname="example-foo",dynamicnoresolveshouldremainthesame1="o.metadata.labels.baz",dynamicnoresolveshouldremainthesame2="metadata.labels.baz",group="samplecontroller.k8s.io",version="v1alpha1",kind="Foo"} 42.000000
 # HELP kube_customresource_foo_replicas Number of replicas for each Foo instance
 # TYPE kube_customresource_foo_replicas gauge
 kube_customresource_foo_replicas{name="example-foo",group="samplecontroller.k8s.io",version="v1alpha1",kind="Foo"} 1.000000
+# HELP kube_customresource_platform_info_conformance Information about each MyPlatform instance (using existing exhaustive CRS feature-set for conformance)
+# TYPE kube_customresource_platform_info_conformance gauge
+kube_customresource_platform_info_conformance{id="1000",os="linux",job="crsm",name="test-dotnet-app",appid="testdotnetapp",language="csharp",label_bar="2",label_foo="1",label_job="crsm",instancesize="small",environmenttype="dev",group="contoso.com",version="v1alpha1",kind="MyPlatform"} 2.000000
 `
 	if equal := cmp.Equal(gotRaw, wantRaw); !equal {
 		t.Fatalf("[-got +want]:\n%s", cmp.Diff(gotRaw, wantRaw))
@@ -69,7 +72,7 @@ func TestSelfServer(t *testing.T) {
 	inFlightDurationTotal := 0.0
 	inFlightDurationFamily, ok := telemetryMetrics[httpRequestDurationSeconds]
 	if ok {
-		inFlightDurationTotal = *inFlightDurationFamily.Metric[0].Histogram.SampleSum
+		inFlightDurationTotal = inFlightDurationFamily.GetMetric()[0].GetHistogram().GetSampleSum()
 	}
 
 	// Ping main /metrics endpoint.
@@ -92,7 +95,7 @@ func TestSelfServer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get metrics: %v", err)
 	}
-	newInFlightDurationTotal := *telemetryMetrics[httpRequestDurationSeconds].Metric[0].Histogram.SampleSum
+	newInFlightDurationTotal := telemetryMetrics[httpRequestDurationSeconds].GetMetric()[0].GetHistogram().GetSampleSum()
 	if newInFlightDurationTotal == inFlightDurationTotal {
 		t.Fatalf("got in-flight duration total %f, want %f", newInFlightDurationTotal, inFlightDurationTotal)
 	}

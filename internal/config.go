@@ -79,12 +79,16 @@ func (c *configurer) build(crsmUIDToStoresMap map[types.UID][]*StoreType, tryNoC
 		}
 		ls, fs := storeConfiguration.Selectors.Label, storeConfiguration.Selectors.Field
 		families := storeConfiguration.Families
+		resolver := storeConfiguration.Resolver
+		labelKeys, labelValues := storeConfiguration.LabelKeys, storeConfiguration.LabelValues
 		s := buildStore(
 			c.ctx, c.dynamicClientset,
 			gvkWithR,
 			families,
 			tryNoCache,
 			ls, fs,
+			resolver,
+			labelKeys, labelValues,
 		)
 		resourceUID := c.resource.GetUID()
 		crsmUIDToStoresMap[resourceUID] = append(crsmUIDToStoresMap[resourceUID], s)

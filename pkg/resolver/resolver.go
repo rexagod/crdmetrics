@@ -4,5 +4,7 @@ package resolver
 type Resolver interface {
 
 	// Resolve resolves the given expression.
-	Resolve(string, map[string]interface{}) string
+	// NOTE: The returned map should have a single key:value (query:resolved[LabelValues,Value], of unit length) pair if
+	// the expression is resolved to a non-composite value.
+	Resolve(string, map[string]interface{}) map[string]string
 }

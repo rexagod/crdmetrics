@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -99,7 +100,7 @@ func (h *crsmHandler) handleEvent(
 		if len(revisionSHA) > 1 {
 			resource.Labels["app.kubernetes.io/version"] = revisionSHA[1]
 		} else {
-			logger.Error(fmt.Errorf("failed to get revision SHA, continuing anyway"), "cannot set version label")
+			logger.Error(stderrors.New("failed to get revision SHA, continuing anyway"), "cannot set version label")
 		}
 
 		// Set up CR GC.
@@ -121,7 +122,7 @@ func (h *crsmHandler) handleEvent(
 				},
 			})
 		} else {
-			logger.Error(fmt.Errorf("failed to get namespace, continuing anyway"), "cannot set ownerReference")
+			logger.Error(stderrors.New("failed to get namespace, continuing anyway"), "cannot set ownerReference")
 		}
 
 		// Compare resource with the fetched resource.
@@ -143,7 +144,7 @@ func (h *crsmHandler) handleEvent(
 		ctx, kObj,
 		resource,
 		metav1.ConditionFalse,
-		fmt.Sprintf("Event handler is yet to process event: %s", event),
+		"Event handler is yet to process event: "+event,
 	)
 	if err != nil {
 		logger.Error(fmt.Errorf("failed to emit success on %s: %w", kObj, err), "cannot update the resource")
@@ -155,7 +156,7 @@ func (h *crsmHandler) handleEvent(
 	if configurationYAML == "" {
 
 		// This should never happen owing to the Kubebuilder check in place.
-		logger.Error(fmt.Errorf("configuration YAML is empty"), "cannot process the resource")
+		logger.Error(stderrors.New("configuration YAML is empty"), "cannot process the resource")
 		h.emitFailureOnResource(ctx, kObj, resource, "Configuration YAML is empty")
 		return nil
 	}

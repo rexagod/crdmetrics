@@ -30,25 +30,57 @@ type StoreType struct {
 	// metric map's keys.
 	headers []string
 
+	// ==================================================================================================
 	// Exported attributes that each store is associated with, used for unmarshalling the configuration.
-	Group        string `yaml:"g"`
-	Version      string `yaml:"v"`
-	Kind         string `yaml:"k"`
+	// ==================================================================================================
+
+	// Group is the API group of the custom resource.
+	Group string `yaml:"g"`
+
+	// Version is the API version of the custom resource.
+	Version string `yaml:"v"`
+
+	// Kind is the type of the custom resource.
+	Kind string `yaml:"k"`
+
+	// ResourceName is the name (plural) of the custom resource, in lowercase.
 	ResourceName string `yaml:"r"`
-	Selectors    struct {
+
+	// Selectors is the selectors to use to filter the objects.
+	Selectors struct {
 		Label string `yaml:"label,omitempty"`
 		Field string `yaml:"field,omitempty"`
 	} `yaml:"selectors,omitempty"`
+
+	// Families is a slice of metric families.
 	Families []*FamilyType `yaml:"families"`
+
+	// Resolver is the resolver to use to evaluate expressions.
+	Resolver ResolverType `yaml:"resolver"`
+
+	// LabelKeys is a slice of label keys.
+	LabelKeys []string `yaml:"labelKeys,omitempty"`
+
+	// LabelValues is a slice of label values.
+	LabelValues []string `yaml:"labelValues,omitempty"`
 }
 
 // newStore returns a new store.
-func newStore(logger klog.Logger, headers []string, families []*FamilyType) *StoreType {
+func newStore(
+	logger klog.Logger,
+	headers []string,
+	families []*FamilyType,
+	resolver ResolverType,
+	labelKeys []string, labelValues []string,
+) *StoreType {
 	return &StoreType{
-		logger:   logger,
-		metrics:  map[types.UID][]string{},
-		headers:  headers,
-		Families: families,
+		logger:      logger,
+		metrics:     map[types.UID][]string{},
+		headers:     headers,
+		Families:    families,
+		Resolver:    resolver,
+		LabelKeys:   labelKeys,
+		LabelValues: labelValues,
 	}
 }
 
@@ -67,10 +99,19 @@ func (s *StoreType) Add(objectI interface{}) error {
 	// Generate metrics from the object.
 	familyMetrics := make([]string, len(s.Families))
 	for i, f := range s.Families {
-		familyMetrics[i], err = f.rawWith(unstructuredObject)
-		if err != nil {
-			s.logger.Error(err, "Add", "family", f.Name)
+
+		// Inherit the resolver.
+		if f.Resolver == ResolverTypeNone {
+			f.Resolver = s.Resolver
 		}
+
+		// Inherit the label keys and values.
+		f.LabelKeys = append(f.LabelKeys, s.LabelKeys...)
+		f.LabelValues = append(f.LabelValues, s.LabelValues...)
+
+		// Generate the metrics.
+		f.logger = s.logger
+		familyMetrics[i] = f.rawWith(unstructuredObject)
 		s.logger.V(4).Info("Add", "family", f.Name, "metrics", familyMetrics[i])
 	}
 

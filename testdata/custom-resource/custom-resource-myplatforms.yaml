@@ -6,6 +6,9 @@ metadata:
   labels:
     foo: "1"
     bar: "2"
+    job: "crsm"
+  annotations:
+    id: "1000"
 spec:
   appId: testdotnetapp
   language: csharp

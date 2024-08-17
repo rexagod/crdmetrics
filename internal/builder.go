@@ -28,6 +28,8 @@ func buildStore(
 	metricFamilies []*FamilyType,
 	tryNoCache bool,
 	labelSelector, fieldSelector string,
+	resolver ResolverType,
+	labelKeys []string, labelValues []string,
 ) *StoreType {
 	logger := klog.FromContext(ctx)
 
@@ -59,12 +61,25 @@ func buildStore(
 		},
 	}
 
-	// Create the reflector's StoreType.
+	// Build metric headers.
 	headers := make([]string, len(metricFamilies))
 	for i, f := range metricFamilies {
 		headers[i] = f.buildHeaders()
 	}
-	s := newStore(logger, headers, metricFamilies)
+
+	// Set the default resolver.
+	if resolver == ResolverTypeNone {
+		resolver = ResolverTypeUnstructured
+	}
+
+	// Instantiate a new store.
+	s := newStore(
+		logger,
+		headers,
+		metricFamilies,
+		resolver,
+		labelKeys, labelValues,
+	)
 
 	// Create and start the reflector.
 	wrapper := &unstructured.Unstructured{}

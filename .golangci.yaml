@@ -1,13 +1,16 @@
+# Reference: https://github.com/golangci/golangci-lint/blob/master/.golangci.reference.yml
 run:
-  deadline: 1m
-  skip-files:
+  timeout: 3m
+
+issues:
+  exclude-files:
     - pkg/apis/crsm/register.go
     - pkg/apis/crsm/v1alpha1/register.go
 
 linters:
   disable:
     - exhaustruct
-    - goerr113
+    - err113
     - gci
     - makezero
   presets:
@@ -20,6 +23,8 @@ linters:
     - unused
 
 linters-settings:
+  perfsprint:
+    strconcat: false
   depguard:
     rules:
       main:
