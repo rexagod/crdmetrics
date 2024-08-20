@@ -6,6 +6,18 @@
 
 Custom Resource State Metrics (`crsm`) is a Kubernetes controller that builds on Kube-State-Metrics' Custom Resource State's ideology and generates metrics for custom resources based on the configuration specified in its managed resource, `CustomResourceStateMetricsResource`.
 
+The project's [conformance benchmarking](./tests/bench/bench.sh) shows 3x faster RTT for CRSM as compared to Kube-State-Metrics' Custom Resource State Metrics ([f8aa7d9b](https://github.com/kubernetes/kube-state-metrics/commit/f8aa7d9bb9d8e29876e19f4859391a54a7e61d63)) feature-set:
+
+```
+Tue Aug 20 21:18:58 IST 2024
+[CRSM]
+BUILD:  1021ms
+RTT:    1044ms
+[KSM]
+BUILD:  1042ms
+RTT:    3122ms
+```
+
 ## Development
 
 Start developing by following these steps:
@@ -31,7 +43,7 @@ In the order of priority:
 
 - [X] CEL expressions for metric generation (or [*unstructured.Unstructured](https://github.com/kubernetes/apimachinery/issues/181), if that suffices).
 - [X] Conformance test(s) for Kube-State-Metrics' [Custom Resource State API](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/extend/customresourcestate-metrics.md#multiple-metricskitchen-sink).
-- [ ] Benchmark(s) for Kube-State-Metrics' [Custom Resource State API](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/extend/customresourcestate-metrics.md#multiple-metricskitchen-sink).
+- [X] Benchmark(s) for Kube-State-Metrics' [Custom Resource State API](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/extend/customresourcestate-metrics.md#multiple-metricskitchen-sink).
 - [X] E2E tests covering the controller's basic functionality.
 - [ ] [Graduate to ALPHA](https://github.com/kubernetes/enhancements/issues/4785), i.e., draft out a KEP.
 - [ ] gRPC server for metrics generation.

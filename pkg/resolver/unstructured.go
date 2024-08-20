@@ -25,14 +25,14 @@ func NewUnstructuredResolver(logger klog.Logger) *UnstructuredResolver {
 // NOTE: Resolutions resulting in composite values for label keys and values are not supported, owing to upstream
 // limitations: https://github.com/kubernetes/apimachinery/blob/v0.31.0/pkg/apis/meta/v1/unstructured/helpers_test.go#L121.
 func (ur *UnstructuredResolver) Resolve(query string, unstructuredObjectMap map[string]interface{}) map[string]string {
-	ur.logger = ur.logger.WithValues("query", query)
+	logger := ur.logger.WithValues("query", query)
 
 	resolvedI, found, err := unstructured.NestedFieldNoCopy(unstructuredObjectMap, strings.Split(query, ".")...)
 	if !found {
 		return map[string]string{query: query}
 	}
 	if err != nil {
-		ur.logger.V(1).Info("ignoring resolution for query", "info", err)
+		logger.V(1).Info("ignoring resolution for query", "info", err)
 		return map[string]string{query: query}
 	}
 

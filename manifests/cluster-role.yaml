@@ -2,7 +2,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: crsm
+  name: custom-resource-state-metrics
 rules:
 - apiGroups:
   - crsm.instrumentation.k8s-sigs.io

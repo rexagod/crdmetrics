@@ -5,6 +5,8 @@ metadata:
   namespace: default
   labels:
     app.kubernetes.io/part-of: sample-controller
+    foo: "42"
+    bar: "43"
 spec:
   deploymentName: example-foo
   replicas: 1

@@ -1,7 +1,10 @@
 # Module paraphernalia
 
 assets
-crsm
+custom-resource-state-metrics
 
 # `pprof` artefacts
 *.ps
+
+# `bench` artefacts
+wget-log*

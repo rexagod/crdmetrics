@@ -37,7 +37,7 @@ spec:
             metrics:
               - labelKeys: 
                   - "name"
-                  - "dynamicNoResolveShouldRemainTheSame_CompositeUnsupportedUpstream"
+                  - "dynamicNoResolveShouldOutputMapRepr_CompositeUnsupportedUpstreamForUnstructured"
                 labelValues:
                   - "metadata.name"
                   - "metadata.labels"

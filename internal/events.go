@@ -78,6 +78,135 @@ func (h *crsmHandler) handleEvent(
 	kObj := klog.KObj(resource).String()
 
 	// Preemptively update the resource metadata. We poll here to avoid same resource versions across update bursts.
+	err := h.updateMetadata(ctx, resource)
+	if err != nil {
+		logger.Error(fmt.Errorf("failed to update metadata for %s: %w", kObj, err), "cannot handle event")
+		return nil // Do not requeue.
+	}
+
+	// Update resource status.
+	resource, err = h.emitSuccessOnResource(ctx, resource, metav1.ConditionFalse, fmt.Sprintf("Event handler received event: %s", event))
+	if err != nil {
+		logger.Error(fmt.Errorf("failed to emit success on %s: %w", kObj, err), "cannot update the resource")
+		return nil // Do not requeue.
+	}
+
+	// Process the fetched configuration.
+	configurationYAML := resource.Spec.ConfigurationYAML
+	if configurationYAML == "" {
+
+		// This should never happen owing to the Kubebuilder check in place.
+		logger.Error(stderrors.New("configuration YAML is empty"), "cannot process the resource")
+		h.emitFailureOnResource(ctx, resource, "Configuration YAML is empty")
+		return nil
+	}
+	configurerInstance := newConfigurer(ctx, h.dynamicClientset, resource)
+
+	// dropStores drops associated stores between resource changes.
+	dropStores := func() {
+		resourceUID := resource.GetUID()
+		if _, ok = crsmUIDToStoresMap[resourceUID]; ok {
+
+			// The associated stores are only reachable through the map. Deleting them will trigger the GC.
+			delete(crsmUIDToStoresMap, resourceUID)
+		}
+	}
+
+	// Handle the event.
+	switch event {
+
+	// Build all associated stores.
+	case addEvent.String(), updateEvent.String():
+		dropStores()
+		err = configurerInstance.parse(configurationYAML)
+		if err != nil {
+			logger.Error(fmt.Errorf("failed to parse configuration YAML: %w", err), "cannot process the resource")
+			h.emitFailureOnResource(ctx, resource, fmt.Sprintf("Failed to parse configuration YAML: %s", err))
+			return nil
+		}
+		configurerInstance.build(crsmUIDToStoresMap, tryNoCache)
+
+	// Drop all associated stores.
+	case deleteEvent.String():
+		dropStores()
+
+	// This should never happen.
+	default:
+		logger.Error(fmt.Errorf("unknown event type (%s)", event), "cannot process the resource")
+		h.emitFailureOnResource(ctx, resource, fmt.Sprintf("Unknown event type: %s", event))
+		return nil
+	}
+
+	// Update the status of the resource.
+	_, err = h.emitSuccessOnResource(ctx, resource, metav1.ConditionTrue, fmt.Sprintf("Event handler successfully processed event: %s", event))
+	if err != nil {
+		logger.Error(fmt.Errorf("failed to emit success on %s: %w", kObj, err), "cannot update the resource")
+		return nil // Do not requeue.
+	}
+
+	return nil
+}
+
+// emitSuccessOnResource emits a success condition on the given resource.
+func (h *crsmHandler) emitSuccessOnResource(
+	ctx context.Context,
+	gotResource *v1alpha1.CustomResourceStateMetricsResource,
+	conditionBool metav1.ConditionStatus,
+	message string,
+) (*v1alpha1.CustomResourceStateMetricsResource, error) {
+	kObj := klog.KObj(gotResource).String()
+
+	resource, err := h.crsmClientset.CrsmV1alpha1().CustomResourceStateMetricsResources(gotResource.GetNamespace()).
+		Get(ctx, gotResource.GetName(), metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get %s: %w", kObj, err)
+	}
+	resource.Status.Set(resource, metav1.Condition{
+		Type:    v1alpha1.ConditionType[v1alpha1.ConditionTypeProcessed],
+		Status:  conditionBool,
+		Message: message,
+	})
+	resource, err = h.crsmClientset.CrsmV1alpha1().CustomResourceStateMetricsResources(resource.GetNamespace()).
+		UpdateStatus(ctx, resource, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update the status of %s: %w", kObj, err)
+	}
+
+	return resource, nil
+}
+
+// emitFailureOnResource emits a failure condition on the given resource.
+func (h *crsmHandler) emitFailureOnResource(
+	ctx context.Context,
+	gotResource *v1alpha1.CustomResourceStateMetricsResource,
+	message string,
+) /* Don't return the most recent resource since this call should always precede an empty return. */ {
+	kObj := klog.KObj(gotResource).String()
+
+	resource, err := h.crsmClientset.CrsmV1alpha1().CustomResourceStateMetricsResources(gotResource.GetNamespace()).
+		Get(ctx, gotResource.GetName(), metav1.GetOptions{})
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to get %s: %w", kObj, err))
+		return
+	}
+	resource.Status.Set(resource, metav1.Condition{
+		Type:    v1alpha1.ConditionType[v1alpha1.ConditionTypeFailed],
+		Status:  metav1.ConditionTrue,
+		Message: message,
+	})
+	_, err = h.crsmClientset.CrsmV1alpha1().CustomResourceStateMetricsResources(resource.GetNamespace()).
+		UpdateStatus(ctx, resource, metav1.UpdateOptions{})
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to emit failure on %s: %w", kObj, err))
+		return
+	}
+}
+
+// updateMetadata updates the metadata of the CRSMR resource.
+func (h *crsmHandler) updateMetadata(ctx context.Context, resource *v1alpha1.CustomResourceStateMetricsResource) error {
+	logger := klog.FromContext(ctx)
+	kObj := klog.KObj(resource).String()
+
 	err := wait.PollUntilContextTimeout(ctx, time.Second, time.Minute, false, func(context.Context) (
 		bool,
 		error,
@@ -134,133 +263,10 @@ func (h *crsmHandler) handleEvent(
 
 		return true, nil
 	})
+
 	if err != nil {
-		logger.Error(fmt.Errorf("failed to preemptively update %s: %w", kObj, err), "cannot handle event")
-		return nil // Do not requeue.
-	}
-
-	// Update resource status.
-	resource, err = h.emitSuccessOnResource(
-		ctx, kObj,
-		resource,
-		metav1.ConditionFalse,
-		"Event handler is yet to process event: "+event,
-	)
-	if err != nil {
-		logger.Error(fmt.Errorf("failed to emit success on %s: %w", kObj, err), "cannot update the resource")
-		return nil // Do not requeue.
-	}
-
-	// Process the fetched configuration.
-	configurationYAML := resource.Spec.ConfigurationYAML
-	if configurationYAML == "" {
-
-		// This should never happen owing to the Kubebuilder check in place.
-		logger.Error(stderrors.New("configuration YAML is empty"), "cannot process the resource")
-		h.emitFailureOnResource(ctx, kObj, resource, "Configuration YAML is empty")
-		return nil
-	}
-	configurerInstance := newConfigurer(ctx, h.dynamicClientset, resource)
-
-	// dropStores drops associated stores between resource changes.
-	dropStores := func() {
-		resourceUID := resource.GetUID()
-		if _, ok = crsmUIDToStoresMap[resourceUID]; ok {
-
-			// The associated stores are only reachable through the map. Deleting them will trigger the GC.
-			delete(crsmUIDToStoresMap, resourceUID)
-		}
-	}
-
-	// Handle the event.
-	switch event {
-
-	// Build all associated stores.
-	case addEvent.String(), updateEvent.String():
-		dropStores()
-		err = configurerInstance.parse(configurationYAML)
-		if err != nil {
-			logger.Error(fmt.Errorf("failed to parse configuration YAML: %w", err), "cannot process the resource")
-			h.emitFailureOnResource(ctx, kObj, resource, fmt.Sprintf("Failed to parse configuration YAML: %s", err))
-			return nil
-		}
-		configurerInstance.build(crsmUIDToStoresMap, tryNoCache)
-
-	// Drop all associated stores.
-	case deleteEvent.String():
-		dropStores()
-
-	// This should never happen.
-	default:
-		logger.Error(fmt.Errorf("unknown event type (%s)", event), "cannot process the resource")
-		h.emitFailureOnResource(ctx, kObj, resource, fmt.Sprintf("Unknown event type: %s", event))
-		return nil
-	}
-
-	// Update the status of the resource.
-	_, err = h.emitSuccessOnResource(
-		ctx, kObj,
-		resource,
-		metav1.ConditionTrue,
-		fmt.Sprintf("Event handler successfully processed event: %s", event),
-	)
-	if err != nil {
-		logger.Error(fmt.Errorf("failed to emit success on %s: %w", kObj, err), "cannot update the resource")
-		return nil // Do not requeue.
+		return fmt.Errorf("failed while polling for %s: %w", kObj, err)
 	}
 
 	return nil
-}
-
-// emitSuccessOnResource emits a success condition on the given resource.
-func (h *crsmHandler) emitSuccessOnResource(
-	ctx context.Context,
-	kObj string,
-	gotResource *v1alpha1.CustomResourceStateMetricsResource,
-	conditionBool metav1.ConditionStatus,
-	message string,
-) (*v1alpha1.CustomResourceStateMetricsResource, error) {
-	resource, err := h.crsmClientset.CrsmV1alpha1().CustomResourceStateMetricsResources(gotResource.GetNamespace()).
-		Get(ctx, gotResource.GetName(), metav1.GetOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get %s: %w", kObj, err)
-	}
-	resource.Status.Set(resource, metav1.Condition{
-		Type:    v1alpha1.ConditionType[v1alpha1.ConditionTypeProcessed],
-		Status:  conditionBool,
-		Message: message,
-	})
-	resource, err = h.crsmClientset.CrsmV1alpha1().CustomResourceStateMetricsResources(resource.GetNamespace()).
-		UpdateStatus(ctx, resource, metav1.UpdateOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to update the status of %s: %w", kObj, err)
-	}
-
-	return resource, nil
-}
-
-// emitFailureOnResource emits a failure condition on the given resource.
-func (h *crsmHandler) emitFailureOnResource(
-	ctx context.Context,
-	kObj string,
-	gotResource *v1alpha1.CustomResourceStateMetricsResource,
-	message string,
-) /* Don't return the most recent resource since this call should always precede an empty return. */ {
-	resource, err := h.crsmClientset.CrsmV1alpha1().CustomResourceStateMetricsResources(gotResource.GetNamespace()).
-		Get(ctx, gotResource.GetName(), metav1.GetOptions{})
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("failed to get %s: %w", kObj, err))
-		return
-	}
-	resource.Status.Set(resource, metav1.Condition{
-		Type:    v1alpha1.ConditionType[v1alpha1.ConditionTypeFailed],
-		Status:  metav1.ConditionTrue,
-		Message: message,
-	})
-	_, err = h.crsmClientset.CrsmV1alpha1().CustomResourceStateMetricsResources(resource.GetNamespace()).
-		UpdateStatus(ctx, resource, metav1.UpdateOptions{})
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("failed to emit failure on %s: %w", kObj, err))
-		return
-	}
 }

@@ -1,5 +1,6 @@
 # Variables are declared in the order in which they occur.
 ASSETS_DIR ?= assets
+BENCH_TIMEOUT ?= 300
 BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
 BUILD_DATE ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 BUILD_TAG ?= $(shell git describe --tags --exact-match 2>/dev/null || echo "latest")
@@ -8,10 +9,6 @@ CONTROLLER_GEN ?= $(shell go env GOPATH)/bin/controller-gen
 CONTROLLER_GEN_APIS_DIR ?= pkg/apis
 CONTROLLER_GEN_OUT_DIR ?= /tmp/crsm/controller-gen
 CONTROLLER_GEN_VERSION ?= v0.15.0
-TEST_PKG ?= ./tests
-TEST_RUN_PATTERN ?= .
-TEST_TIMEOUT ?= 240
-LOCAL_NAMESPACE ?= default
 GIT_COMMIT = $(shell git rev-parse --short HEAD)
 GO ?= go
 GOFMT ?= gofmt
@@ -20,14 +17,19 @@ GOLANGCI_LINT_CONFIG ?= .golangci.yaml
 GOLANGCI_LINT_VERSION ?= v1.60.1
 GO_FILES = $(shell find . -type d -name vendor -prune -o -type f -name "*.go" -print)
 KUBECTL ?= kubectl
+KUBESTATEMETRICS_CUSTOMRESOURCESTATE_CONFIG ?= tests/bench/kubestatemetrics-custom-resource-state-config.yaml
+LOCAL_NAMESPACE ?= default
 MARKDOWNFMT ?= $(shell go env GOPATH)/bin/markdownfmt
 MARKDOWNFMT_VERSION ?= v3.1.0
 MD_FILES = $(shell find . \( -type d -name 'vendor' -o -type d -name $(patsubst %/,%,$(patsubst ./%,%,$(ASSETS_DIR))) \) -prune -o -type f -name "*.md" -print)
 POD_NAMESPACE ?= default
 PPROF_OPTIONS ?=
 PPROF_PORT ?= 9998
-PROJECT_NAME = crsm
+PROJECT_NAME = custom-resource-state-metrics
 RUNNER = $(shell id -u -n)@$(shell hostname)
+TEST_PKG ?= ./tests
+TEST_RUN_PATTERN ?= .
+TEST_TIMEOUT ?= 240
 V ?= 4
 VALE ?= vale
 VALE_ARCH ?= $(if $(filter $(shell uname -m),arm64),macOS_arm64,Linux_64-bit)
@@ -130,7 +132,7 @@ delete-testdata:
 
 .PHONY: local
 local: vet manifests codegen $(PROJECT_NAME)
-	@$(KUBECTL) scale deployment $(PROJECT_NAME)-controller --replicas=0 -n $(LOCAL_NAMESPACE) 2>/dev/null || true
+	@$(KUBECTL) scale deployment $(PROJECT_NAME) --replicas=0 -n $(LOCAL_NAMESPACE) 2>/dev/null || true
 	@./$(PROJECT_NAME) -v=$(V) -kubeconfig $(KUBECONFIG)
 
 ###########
@@ -153,6 +155,19 @@ test:
 	TEST_PKG=$(TEST_PKG) \
 	timeout --signal SIGINT --preserve-status $(TEST_TIMEOUT) ./tests/run.sh
 
+.PHONY: bench
+bench: setup apply apply-testdata vet manifests codegen build
+	@\
+	KUBESTATEMETRICS_CUSTOMRESOURCESTATE_CONFIG=$(KUBESTATEMETRICS_CUSTOMRESOURCESTATE_CONFIG) \
+	GO=$(GO) \
+	KUBESTATEMETRICS_DIR=$(KUBESTATEMETRICS_DIR) \
+	KUBECONFIG=$(KUBECONFIG) \
+	KUBECTL=$(KUBECTL) \
+	LOCAL_NAMESPACE=$(LOCAL_NAMESPACE) \
+	PROJECT_NAME=$(PROJECT_NAME) \
+	POD_NAMESPACE=$(POD_NAMESPACE) \
+	timeout --preserve-status $(BENCH_TIMEOUT) ./tests/bench/bench.sh
+	@make delete delete-testdata
 ###########
 # Linting #
 ###########

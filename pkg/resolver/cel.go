@@ -45,7 +45,7 @@ func (ce costEstimator) CallCost(function, _ string, args []ref.Val, result ref.
 
 // Resolve resolves the given query against the given unstructured object.
 func (cr *CELResolver) Resolve(query string, unstructuredObjectMap map[string]interface{}) map[string]string {
-	cr.logger = cr.logger.WithValues("query", query)
+	logger := cr.logger.WithValues("query", query)
 
 	// Create a custom CEL environment.
 	// nolint: godox
@@ -56,14 +56,14 @@ func (cr *CELResolver) Resolve(query string, unstructuredObjectMap map[string]in
 		cel.EagerlyValidateDeclarations(true),
 	)
 	if err != nil {
-		cr.logger.Error(fmt.Errorf("error creating CEL environment: %w", err), "ignoring resolution for query")
+		logger.Error(fmt.Errorf("error creating CEL environment: %w", err), "ignoring resolution for query")
 		return map[string]string{query: query}
 	}
 
 	// Parse.
 	ast, iss := env.Parse(query)
 	if iss.Err() != nil {
-		cr.logger.Error(fmt.Errorf("error parsing CEL query: %w", iss.Err()), "ignoring resolution for query")
+		logger.Error(fmt.Errorf("error parsing CEL query: %w", iss.Err()), "ignoring resolution for query")
 		return map[string]string{query: query}
 	}
 
@@ -78,7 +78,7 @@ func (cr *CELResolver) Resolve(query string, unstructuredObjectMap map[string]in
 		cel.CostTracking(new(costEstimator)),
 	)
 	if err != nil {
-		cr.logger.Error(fmt.Errorf("error compiling CEL query: %w", err), "ignoring resolution for query")
+		logger.Error(fmt.Errorf("error compiling CEL query: %w", err), "ignoring resolution for query")
 		return map[string]string{query: query}
 	}
 
@@ -88,19 +88,19 @@ func (cr *CELResolver) Resolve(query string, unstructuredObjectMap map[string]in
 	out, evalDetails, err = program.Eval(map[string]interface{}{
 		"o" /* Queries will follow the format: o.<A>.<AB>.<ABC>... */ : unstructuredObjectMap,
 	})
-	cr.logger = cr.logger.WithValues(
+	logger = logger.WithValues(
 		"costLimit", costLimit,
 	)
 	if evalDetails != nil {
-		cr.logger = cr.logger.WithValues(
+		logger = logger.WithValues(
 			"queryCost", *evalDetails.ActualCost(),
 		)
 	}
 	if err != nil {
-		cr.logger.V(1).Info("ignoring resolution for query", "info", err)
+		logger.V(1).Info("ignoring resolution for query", "info", err)
 		return map[string]string{query: query}
 	}
-	cr.logger.V(4).Info("CEL query runtime cost")
+	logger.V(4).Info("CEL query runtime cost")
 
 	switch out.Type() {
 	case types.BoolType, types.DoubleType, types.IntType, types.StringType, types.UintType:
@@ -117,7 +117,7 @@ func (cr *CELResolver) Resolve(query string, unstructuredObjectMap map[string]in
 				// Even in cases where the parent and immediate child have the same key, the "o" prefix in CEL queries will prevent any collision.
 				m[k] = fmt.Sprintf("%v", v)
 			default:
-				cr.logger.V(1).Error(fmt.Errorf("encountered composite value %q at key %q, skipping", v, k), "ignoring resolution for query")
+				logger.V(1).Error(fmt.Errorf("encountered composite value %q at key %q, skipping", v, k), "ignoring resolution for query")
 			}
 		}
 		return m
@@ -128,12 +128,12 @@ func (cr *CELResolver) Resolve(query string, unstructuredObjectMap map[string]in
 			case string, int, uint, float64, bool:
 				m[strconv.Itoa(i)] = fmt.Sprintf("%v", v)
 			default:
-				cr.logger.V(1).Error(fmt.Errorf("encountered composite value %q at index %d, skipping", v, i), "ignoring resolution for query")
+				logger.V(1).Error(fmt.Errorf("encountered composite value %q at index %d, skipping", v, i), "ignoring resolution for query")
 			}
 		}
 		return m
 	default:
-		cr.logger.Error(fmt.Errorf("unsupported output type %q", out.Type()), "ignoring resolution for query")
+		logger.Error(fmt.Errorf("unsupported output type %q", out.Type()), "ignoring resolution for query")
 	}
 
 	return map[string]string{query: query}

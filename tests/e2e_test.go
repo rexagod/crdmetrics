@@ -33,7 +33,7 @@ kube_customresource_platform_info{name="test-dotnet-app",group="contoso.com",ver
 kube_customresource_platform_info{language="csharp",environmenttype="dev",group="contoso.com",version="v1alpha1",kind="MyPlatform"} 1.000000
 # HELP kube_customresource_platform_replicas Number of replicas for each MyPlatform instance
 # TYPE kube_customresource_platform_replicas gauge
-kube_customresource_platform_replicas{name="test-dotnet-app",dynamicnoresolveshouldremainthesame_compositeunsupportedupstream="map[bar:2 foo:1 job:crsm]",group="contoso.com",version="v1alpha1",kind="MyPlatform"} 3.000000
+kube_customresource_platform_replicas{name="test-dotnet-app",dynamicnoresolveshouldoutputmaprepr_compositeunsupportedupstreamforunstructured="map[bar:2 foo:1 job:crsm]",group="contoso.com",version="v1alpha1",kind="MyPlatform"} 3.000000
 # HELP kube_customresource_foos_info Information about each Foo instance
 # TYPE kube_customresource_foos_info gauge
 kube_customresource_foos_info{static="42",dynamicshouldresolvetoname="example-foo",dynamicnoresolveshouldremainthesame1="o.metadata.labels.baz",dynamicnoresolveshouldremainthesame2="metadata.labels.baz",group="samplecontroller.k8s.io",version="v1alpha1",kind="Foo"} 42.000000
@@ -100,3 +100,6 @@ func TestSelfServer(t *testing.T) {
 		t.Fatalf("got in-flight duration total %f, want %f", newInFlightDurationTotal, inFlightDurationTotal)
 	}
 }
+
+// nolint:godox
+// TODO: Add one for event handler's cycle.

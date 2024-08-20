@@ -69,7 +69,7 @@ type FamilyType struct {
 
 // rawWith returns the given family in its byte representation.
 func (f *FamilyType) rawWith(u *unstructured.Unstructured) string {
-	f.logger = f.logger.WithValues("family", f.Name)
+	logger := f.logger.WithValues("family", f.Name)
 
 	s := strings.Builder{}
 	for _, m := range f.Metrics {
@@ -88,11 +88,11 @@ func (f *FamilyType) rawWith(u *unstructured.Unstructured) string {
 		case ResolverTypeNone:
 			fallthrough
 		case ResolverTypeCEL:
-			resolverInstance = resolver.NewCELResolver(f.logger)
+			resolverInstance = resolver.NewCELResolver(logger)
 		case ResolverTypeUnstructured:
-			resolverInstance = resolver.NewUnstructuredResolver(f.logger)
+			resolverInstance = resolver.NewUnstructuredResolver(logger)
 		default:
-			f.logger.V(1).Error(fmt.Errorf("error resolving metric: unknown resolver %q", m.Resolver), "skipping")
+			logger.V(1).Error(fmt.Errorf("error resolving metric: unknown resolver %q", m.Resolver), "skipping")
 			continue
 		}
 
@@ -128,7 +128,7 @@ func (f *FamilyType) rawWith(u *unstructured.Unstructured) string {
 		// Resolve the metric value.
 		resolvedValue, found := resolverInstance.Resolve(m.Value, u.Object)[m.Value]
 		if !found {
-			f.logger.V(1).Error(fmt.Errorf("error resolving metric value %q", m.Value), "skipping")
+			logger.V(1).Error(fmt.Errorf("error resolving metric value %q", m.Value), "skipping")
 			continue
 		}
 
@@ -142,7 +142,7 @@ func (f *FamilyType) rawWith(u *unstructured.Unstructured) string {
 			resolvedLabelKeys, resolvedLabelValues,
 		)
 		if err != nil {
-			f.logger.V(1).Error(fmt.Errorf("error writing metric: %w", err), "skipping")
+			logger.V(1).Error(fmt.Errorf("error writing metric: %w", err), "skipping")
 			continue
 		}
 
