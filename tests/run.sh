@@ -15,7 +15,7 @@ while ! nc -z localhost "$CRDMETRICS_SELF_PORT"; do sleep 1; done
 
 # Run tests.
 echo -e "\n[Running tests with timeout: $TIMEOUT seconds.]\n"
-"$GO" test -v -timeout "${TIMEOUT}s" -run "$TEST_RUN_PATTERN" -race "$TEST_PKG"
+"$GO" test -count=1 -v -timeout "${TIMEOUT}s" -run "$TEST_RUN_PATTERN" -race "$TEST_PKG"
 TEST_EXIT_CODE=$?
 
 # Trap on SIGINT to terminate the controller.

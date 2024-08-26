@@ -73,7 +73,7 @@ type Controller struct {
 	// workqueue is a rate limited work queue. This is used to queue work to be processed instead of performing it as
 	// soon as a change happens. This means we can ensure we only process a fixed amount of resources at a time, and
 	// makes it easy to ensure we are never processing the same item simultaneously in two different workers.
-	workqueue workqueue.RateLimitingInterface
+	workqueue workqueue.TypedRateLimitingInterface[[2]string]
 
 	// recorder is an event recorder for recording event resources.
 	recorder record.EventRecorder
@@ -95,11 +95,11 @@ func NewController(ctx context.Context, options *Options, kubeClientset kubernet
 	// Initialize the controller.
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartStructuredLogging(0)
-	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeClientset.CoreV1().Events(os.Getenv("POD_NAMESPACE") /* emit in the default namespace if none is defined */)})
+	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeClientset.CoreV1().Events(os.Getenv("EMIT_NAMESPACE") /* emit in the default namespace if none is defined */)})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: version.ControllerName})
-	ratelimiter := workqueue.NewMaxOfRateLimiter(
-		workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 5*time.Minute),
-		&workqueue.BucketRateLimiter{Limiter:
+	ratelimiter := workqueue.NewTypedMaxOfRateLimiter(
+		workqueue.NewTypedItemExponentialFailureRateLimiter[[2]string](5*time.Millisecond, 5*time.Minute),
+		&workqueue.TypedBucketRateLimiter[[2]string]{Limiter:
 		// Burst is the maximum number of tokens
 		// that can be consumed in a single call
 		// to Allow, Reserve, or Wait, so higher
@@ -114,7 +114,7 @@ func NewController(ctx context.Context, options *Options, kubeClientset kubernet
 		crdmetricsClientset:       crdmetricsClientset,
 		dynamicClientset:          dynamicClientset,
 		crdmetricsInformerFactory: informers.NewSharedInformerFactory(crdmetricsClientset, 0),
-		workqueue:                 workqueue.NewRateLimitingQueue(ratelimiter),
+		workqueue:                 workqueue.NewTypedRateLimitingQueue[[2]string](ratelimiter),
 		recorder:                  recorder,
 		options:                   options,
 	}
@@ -135,11 +135,12 @@ func NewController(ctx context.Context, options *Options, kubeClientset kubernet
 					// reconciliation (with an update event) which again updates the resource status and so on. This
 					// also applies to other non-spec fields that are updated, such as labels, but those are handled in
 					// the event handler.
-					// Queue only for `spec` changes.
 					reflect.DeepEqual(oldCRDMetrics.Spec, newCRDMetrics.Spec) {
 					logger.V(10).Info("Skipping event", "[-old +new]", cmp.Diff(oldCRDMetrics, newCRDMetrics))
 					return
 				}
+
+				// Queue only for `spec` changes.
 				logger.V(4).Info("Update event", "[-old +new]", cmp.Diff(oldCRDMetrics.Spec.ConfigurationYAML, newCRDMetrics.Spec.ConfigurationYAML))
 				controller.enqueueCRDMetrics(new, updateEvent)
 			},
@@ -264,8 +265,7 @@ func (c *Controller) processNextWorkItem(ctx context.Context) bool {
 	logger := klog.FromContext(ctx)
 
 	// Retrieve the next item from the queue.
-	objectWithEventInterface, shutdown := c.workqueue.Get()
-	objectWithEvent := objectWithEventInterface.([2]string)
+	objectWithEvent, shutdown := c.workqueue.Get()
 	if shutdown {
 		return false
 	}

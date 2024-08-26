@@ -1,6 +1,6 @@
 # Reference: https://github.com/golangci/golangci-lint/blob/master/.golangci.reference.yml
 run:
-  timeout: 3m
+  timeout: 5m
 
 issues:
   exclude-files:

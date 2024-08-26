@@ -22,13 +22,14 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: ${{ env.GO_VERSION }}
-      - name: Run vet
-        run: go vet ./...
       - name: Setup dependencies
         run: make setup
+      - name: Verify pkg/generated
+        run: make verify-codegen
       - name: Run linter
         run: make lint
   test:
+    needs: lint
     runs-on: ubuntu-latest
     steps:
       - name: Checkout the codebase

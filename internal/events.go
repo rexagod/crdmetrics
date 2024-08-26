@@ -20,12 +20,10 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 	"time"
 
-	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -33,7 +31,6 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 
 	"github.com/rexagod/crdmetrics/internal/version"
 	"github.com/rexagod/crdmetrics/pkg/apis/crdmetrics/v1alpha1"
@@ -246,28 +243,6 @@ func (h *crdmetricsHandler) updateMetadata(ctx context.Context, resource *v1alph
 			resource.Labels["app.kubernetes.io/version"] = revisionSHA[1]
 		} else {
 			logger.Error(stderrors.New("failed to get revision SHA, continuing anyway"), "cannot set version label")
-		}
-
-		// Set up CR GC.
-		namespace, found := os.LookupEnv("POD_NAMESPACE")
-		if found {
-			ownerRef, err2 := h.kubeClientset.AppsV1().Deployments(namespace).Get(ctx, controllerNameSanitized, metav1.GetOptions{})
-			if err2 != nil {
-				return false, fmt.Errorf("failed to get owner reference: %w", err2)
-			}
-			resource.SetOwnerReferences([]metav1.OwnerReference{
-				{
-					// Use apps/v1 API for the Deployment GVK since it's not populated.
-					APIVersion:         appsv1.SchemeGroupVersion.String(),
-					Kind:               "Deployment",
-					Name:               ownerRef.GetName(),
-					UID:                ownerRef.GetUID(),
-					Controller:         ptr.To(true),
-					BlockOwnerDeletion: ptr.To(false), // Allow removing the CR without removing the controller.
-				},
-			})
-		} else {
-			logger.Error(stderrors.New("failed to get namespace, continuing anyway"), "cannot set ownerReference")
 		}
 
 		// Compare resource with the fetched resource.

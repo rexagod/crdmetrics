@@ -16,7 +16,7 @@ GO ?= go
 GOFMT ?= gofmt
 GOLANGCI_LINT ?= $(shell go env GOPATH)/bin/golangci-lint
 GOLANGCI_LINT_CONFIG ?= .golangci.yaml
-GOLANGCI_LINT_VERSION ?= v1.60.1
+GOLANGCI_LINT_VERSION ?= v1.60.3
 GO_FILES = $(shell find . -type d -name vendor -prune -o -type f -name "*.go" -print)
 KUBECTL ?= kubectl
 KUBESTATEMETRICS_CUSTOMRESOURCESTATE_CONFIG ?= tests/bench/kubestatemetrics-custom-resource-state-config.yaml
@@ -24,7 +24,6 @@ LOCAL_NAMESPACE ?= default
 MARKDOWNFMT ?= $(shell go env GOPATH)/bin/markdownfmt
 MARKDOWNFMT_VERSION ?= v3.1.0
 MD_FILES = $(shell find . \( -type d -name 'vendor' -o -type d -name $(patsubst %/,%,$(patsubst ./%,%,$(ASSETS_DIR))) \) -prune -o -type f -name "*.md" -print)
-POD_NAMESPACE ?= default
 PPROF_OPTIONS ?=
 PPROF_PORT ?= 9998
 PROJECT_NAME = crdmetrics
@@ -76,6 +75,11 @@ manifests:
 codegen:
 	@# Populate pkg/generated/.
 	@./hack/update-codegen.sh
+
+.PHONY: verify-codegen
+verify-codegen:
+	@# Verify codegen.
+	@./hack/verify-codegen.sh
 
 .PHONY: generate
 generate: codegen manifests
@@ -150,26 +154,24 @@ pprof:
 .PHONY: test
 test:
 	@\
-	POD_NAMESPACE=$(POD_NAMESPACE) \
-	CRDMETRICS_SELF_PORT=8887 \
 	CRDMETRICS_MAIN_PORT=8888 \
+	CRDMETRICS_SELF_PORT=8887 \
 	GO=$(GO) \
-	TEST_TIMEOUT=$(TEST_TIMEOUT) \
-	TEST_RUN_PATTERN=$(TEST_RUN_PATTERN) \
 	TEST_PKG=$(TEST_PKG) \
+	TEST_RUN_PATTERN=$(TEST_RUN_PATTERN) \
+	TEST_TIMEOUT=$(TEST_TIMEOUT) \
 	timeout --signal SIGINT --preserve-status $(TEST_TIMEOUT) ./tests/run.sh
 
 .PHONY: bench
 bench: setup apply apply-testdata vet manifests codegen build
 	@\
-	KUBESTATEMETRICS_CUSTOMRESOURCESTATE_CONFIG=$(KUBESTATEMETRICS_CUSTOMRESOURCESTATE_CONFIG) \
 	GO=$(GO) \
-	KUBESTATEMETRICS_DIR=$(KUBESTATEMETRICS_DIR) \
 	KUBECONFIG=$(KUBECONFIG) \
 	KUBECTL=$(KUBECTL) \
+	KUBESTATEMETRICS_CUSTOMRESOURCESTATE_CONFIG=$(KUBESTATEMETRICS_CUSTOMRESOURCESTATE_CONFIG) \
+	KUBESTATEMETRICS_DIR=$(KUBESTATEMETRICS_DIR) \
 	LOCAL_NAMESPACE=$(LOCAL_NAMESPACE) \
 	PROJECT_NAME=$(PROJECT_NAME) \
-	POD_NAMESPACE=$(POD_NAMESPACE) \
 	timeout --preserve-status $(BENCH_TIMEOUT) ./tests/bench/bench.sh
 	@make delete delete-testdata
 ###########

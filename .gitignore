@@ -1,10 +1,9 @@
 # Module paraphernalia
-
-assets
-crdmetrics
+assets/
+./crdmetrics
 
 # `pprof` artefacts
-*.ps
+./*.ps
 
 # `bench` artefacts
-wget-log*
+./wget-log*
