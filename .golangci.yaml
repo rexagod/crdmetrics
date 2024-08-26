@@ -4,8 +4,8 @@ run:
 
 issues:
   exclude-files:
-    - pkg/apis/crsm/register.go
-    - pkg/apis/crsm/v1alpha1/register.go
+    - pkg/apis/crdmetrics/register.go
+    - pkg/apis/crdmetrics/v1alpha1/register.go
 
 linters:
   disable:

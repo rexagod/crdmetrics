@@ -1,3 +1,19 @@
+/*
+Copyright 2024 The Kubernetes crdmetrics Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package internal
 
 import (
@@ -9,7 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 
-	"github.com/rexagod/crsm/pkg/apis/crsm/v1alpha1"
+	"github.com/rexagod/crdmetrics/pkg/apis/crdmetrics/v1alpha1"
 )
 
 // configure defines behaviours for working with configuration(s), can be implemented to use configurations other than
@@ -34,14 +50,14 @@ type configurer struct {
 	// ctx is the controller's context.
 	ctx context.Context
 
-	// configuration is the structured (parsed?) configuration.
+	// configuration is the structured configuration.
 	configuration configuration
 
 	// dynamicClientset is the dynamic clientset used to build stores for different objects.
 	dynamicClientset dynamic.Interface
 
 	// resource is the resource to build stores for.
-	resource *v1alpha1.CustomResourceStateMetricsResource
+	resource *v1alpha1.CRDMetricsResource
 }
 
 // configurer implements the configure interface.
@@ -51,7 +67,7 @@ var _ configure = &configurer{}
 func newConfigurer(
 	ctx context.Context,
 	dynamicClientset dynamic.Interface,
-	resource *v1alpha1.CustomResourceStateMetricsResource,
+	resource *v1alpha1.CRDMetricsResource,
 ) *configurer {
 	return &configurer{
 		ctx:              ctx,
@@ -70,7 +86,7 @@ func (c *configurer) parse(configurationRaw string) error {
 }
 
 // build knows how to build the given configuration.
-func (c *configurer) build(crsmUIDToStoresMap map[types.UID][]*StoreType, tryNoCache bool) {
+func (c *configurer) build(crdmetricsUIDToStoresMap map[types.UID][]*StoreType, tryNoCache bool) {
 	for _, storeConfiguration := range c.configuration.Stores {
 		g, v, k, r := storeConfiguration.Group, storeConfiguration.Version, storeConfiguration.Kind, storeConfiguration.ResourceName
 		gvkWithR := gvkr{
@@ -91,6 +107,6 @@ func (c *configurer) build(crsmUIDToStoresMap map[types.UID][]*StoreType, tryNoC
 			labelKeys, labelValues,
 		)
 		resourceUID := c.resource.GetUID()
-		crsmUIDToStoresMap[resourceUID] = append(crsmUIDToStoresMap[resourceUID], s)
+		crdmetricsUIDToStoresMap[resourceUID] = append(crdmetricsUIDToStoresMap[resourceUID], s)
 	}
 }

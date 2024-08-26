@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Kubernetes custom-resource-state-metrics Authors.
+Copyright 2024 The Kubernetes crdmetrics Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"net/http"
 
-	crsmv1alpha1 "github.com/rexagod/crsm/pkg/generated/clientset/versioned/typed/crsm/v1alpha1"
+	crdmetricsv1alpha1 "github.com/rexagod/crdmetrics/pkg/generated/clientset/versioned/typed/crdmetrics/v1alpha1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
@@ -30,18 +30,18 @@ import (
 
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
-	CrsmV1alpha1() crsmv1alpha1.CrsmV1alpha1Interface
+	CrdmetricsV1alpha1() crdmetricsv1alpha1.CrdmetricsV1alpha1Interface
 }
 
 // Clientset contains the clients for groups.
 type Clientset struct {
 	*discovery.DiscoveryClient
-	crsmV1alpha1 *crsmv1alpha1.CrsmV1alpha1Client
+	crdmetricsV1alpha1 *crdmetricsv1alpha1.CrdmetricsV1alpha1Client
 }
 
-// CrsmV1alpha1 retrieves the CrsmV1alpha1Client
-func (c *Clientset) CrsmV1alpha1() crsmv1alpha1.CrsmV1alpha1Interface {
-	return c.crsmV1alpha1
+// CrdmetricsV1alpha1 retrieves the CrdmetricsV1alpha1Client
+func (c *Clientset) CrdmetricsV1alpha1() crdmetricsv1alpha1.CrdmetricsV1alpha1Interface {
+	return c.crdmetricsV1alpha1
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -88,7 +88,7 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 
 	var cs Clientset
 	var err error
-	cs.crsmV1alpha1, err = crsmv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	cs.crdmetricsV1alpha1, err = crdmetricsv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +113,7 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
-	cs.crsmV1alpha1 = crsmv1alpha1.New(c)
+	cs.crdmetricsV1alpha1 = crdmetricsv1alpha1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs

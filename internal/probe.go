@@ -1,3 +1,19 @@
+/*
+Copyright 2024 The Kubernetes crdmetrics Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package internal
 
 import (
@@ -121,7 +137,7 @@ func (r readyz) probe(ctx context.Context, logger klog.Logger, client kubernetes
 	return genericProbe(ctx, r, logger, client)
 }
 
-// genericProbe returns an http.Handler delegates probes to the Kubernetes API.
+// genericProbe returns an http.Handler that delegates probes to the Kubernetes API.
 func genericProbe(ctx context.Context, p probe, logger klog.Logger, client kubernetes.Interface) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got := client.CoreV1().RESTClient().Get().AbsPath(p.getAsString()).Do(ctx)

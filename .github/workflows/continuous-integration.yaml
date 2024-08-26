@@ -34,7 +34,7 @@ jobs:
       - name: Checkout the codebase
         uses: actions/checkout@v4
         with:
-          path: github.com/rexagod/crsm
+          path: github.com/rexagod/crdmetrics
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
@@ -45,7 +45,7 @@ jobs:
           cluster_name: kind
       - name: Run tests
         run: |
-          cd github.com/rexagod/crsm
+          cd github.com/rexagod/crdmetrics
           export KUBECONFIG=~/.kube/config
           kind get kubeconfig --name kind > $KUBECONFIG
           kind export kubeconfig

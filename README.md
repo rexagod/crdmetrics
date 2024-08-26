@@ -1,19 +1,19 @@
-# `crsm`: Custom Resource State Metrics
+# `crdmetrics`: Custom Resource Definition Metrics
 
-[![CI](https://github.com/rexagod/crsm/actions/workflows/continuous-integration.yaml/badge.svg)](https://github.com/rexagod/crsm/actions/workflows/continuous-integration.yaml) [![Go Report Card](https://goreportcard.com/badge/github.com/rexagod/crsm)](https://goreportcard.com/report/github.com/rexagod/crsm) [![Go Reference](https://pkg.go.dev/badge/github.com/rexagod/crsm.svg)](https://pkg.go.dev/github.com/rexagod/crsm)
+[![CI](https://github.com/rexagod/crdmetrics/actions/workflows/continuous-integration.yaml/badge.svg)](https://github.com/rexagod/crdmetrics/actions/workflows/continuous-integration.yaml) [![Go Report Card](https://goreportcard.com/badge/github.com/rexagod/crdmetrics)](https://goreportcard.com/report/github.com/rexagod/crdmetrics) [![Go Reference](https://pkg.go.dev/badge/github.com/rexagod/crdmetrics.svg)](https://pkg.go.dev/github.com/rexagod/crdmetrics)
 
 ## Summary
 
-Custom Resource State Metrics (`crsm`) is a Kubernetes controller that builds on Kube-State-Metrics' Custom Resource State's ideology and generates metrics for custom resources based on the configuration specified in its managed resource, `CustomResourceStateMetricsResource`.
+Custom Resource Definition Metrics (`crdmetrics`) is a Kubernetes controller that builds on Kube-State-Metrics' Custom Resource State's ideology and generates metrics for custom resources based on the configuration specified in its managed resource, `crdmetrics`.
 
-The project's [conformance benchmarking](./tests/bench/bench.sh) shows 3x faster RTT for CRSM as compared to Kube-State-Metrics' Custom Resource State Metrics ([f8aa7d9b](https://github.com/kubernetes/kube-state-metrics/commit/f8aa7d9bb9d8e29876e19f4859391a54a7e61d63)) feature-set:
+The project's [conformance benchmarking](./tests/bench/bench.sh) shows 3x faster RTT for `crdmetrics` as compared to Kube-State-Metrics' Custom Resource Definition Metrics ([f8aa7d9b](https://github.com/kubernetes/kube-state-metrics/commit/f8aa7d9bb9d8e29876e19f4859391a54a7e61d63)) feature-set:
 
 ```
 Tue Aug 20 21:18:58 IST 2024
-[CRSM]
+[CRDMETRICS]
 BUILD:  1021ms
 RTT:    1044ms
-[KSM]
+[KUBESTATEMETRICS]
 BUILD:  1042ms
 RTT:    3122ms
 ```
@@ -45,6 +45,7 @@ In the order of priority:
 - [X] Conformance test(s) for Kube-State-Metrics' [Custom Resource State API](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/extend/customresourcestate-metrics.md#multiple-metricskitchen-sink).
 - [X] Benchmark(s) for Kube-State-Metrics' [Custom Resource State API](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/extend/customresourcestate-metrics.md#multiple-metricskitchen-sink).
 - [X] E2E tests covering the controller's basic functionality.
+- [X] `s/CRSM/CRDMetrics`.
 - [ ] [Graduate to ALPHA](https://github.com/kubernetes/enhancements/issues/4785), i.e., draft out a KEP.
 - [ ] gRPC server for metrics generation.
 

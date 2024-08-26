@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Kubernetes custom-resource-state-metrics Authors.
+Copyright 2024 The Kubernetes crdmetrics Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,9 +19,9 @@ limitations under the License.
 package fake
 
 import (
-	clientset "github.com/rexagod/crsm/pkg/generated/clientset/versioned"
-	crsmv1alpha1 "github.com/rexagod/crsm/pkg/generated/clientset/versioned/typed/crsm/v1alpha1"
-	fakecrsmv1alpha1 "github.com/rexagod/crsm/pkg/generated/clientset/versioned/typed/crsm/v1alpha1/fake"
+	clientset "github.com/rexagod/crdmetrics/pkg/generated/clientset/versioned"
+	crdmetricsv1alpha1 "github.com/rexagod/crdmetrics/pkg/generated/clientset/versioned/typed/crdmetrics/v1alpha1"
+	fakecrdmetricsv1alpha1 "github.com/rexagod/crdmetrics/pkg/generated/clientset/versioned/typed/crdmetrics/v1alpha1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
@@ -31,8 +31,12 @@ import (
 
 // NewSimpleClientset returns a clientset that will respond with the provided objects.
 // It's backed by a very simple object tracker that processes creates, updates and deletions as-is,
-// without applying any validations and/or defaults. It shouldn't be considered a replacement
+// without applying any field management, validations and/or defaults. It shouldn't be considered a replacement
 // for a real clientset and is mostly useful in simple unit tests.
+//
+// DEPRECATED: NewClientset replaces this with support for field management, which significantly improves
+// server side apply testing. NewClientset is only available when apply configurations are generated (e.g.
+// via --with-applyconfig).
 func NewSimpleClientset(objects ...runtime.Object) *Clientset {
 	o := testing.NewObjectTracker(scheme, codecs.UniversalDecoder())
 	for _, obj := range objects {
@@ -79,7 +83,7 @@ var (
 	_ testing.FakeClient  = &Clientset{}
 )
 
-// CrsmV1alpha1 retrieves the CrsmV1alpha1Client
-func (c *Clientset) CrsmV1alpha1() crsmv1alpha1.CrsmV1alpha1Interface {
-	return &fakecrsmv1alpha1.FakeCrsmV1alpha1{Fake: &c.Fake}
+// CrdmetricsV1alpha1 retrieves the CrdmetricsV1alpha1Client
+func (c *Clientset) CrdmetricsV1alpha1() crdmetricsv1alpha1.CrdmetricsV1alpha1Interface {
+	return &fakecrdmetricsv1alpha1.FakeCrdmetricsV1alpha1{Fake: &c.Fake}
 }

@@ -1,4 +1,4 @@
-package crsm_test
+package crdmetrics_test
 
 import (
 	"os"
@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	CRSM_MAIN_PORT = "CRSM_MAIN_PORT"
-	CRSM_SELF_PORT = "CRSM_SELF_PORT"
+	CRDMETRICS_MAIN_PORT = "CRDMETRICS_MAIN_PORT"
+	CRDMETRICS_SELF_PORT = "CRDMETRICS_SELF_PORT"
 )
 
 func TestMain(m *testing.M) {

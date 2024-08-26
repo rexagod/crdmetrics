@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Kubernetes custom-resource-state-metrics Authors.
+Copyright 2024 The Kubernetes crdmetrics Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,9 +23,9 @@ import (
 	sync "sync"
 	time "time"
 
-	versioned "github.com/rexagod/crsm/pkg/generated/clientset/versioned"
-	crsm "github.com/rexagod/crsm/pkg/generated/informers/externalversions/crsm"
-	internalinterfaces "github.com/rexagod/crsm/pkg/generated/informers/externalversions/internalinterfaces"
+	versioned "github.com/rexagod/crdmetrics/pkg/generated/clientset/versioned"
+	crdmetrics "github.com/rexagod/crdmetrics/pkg/generated/informers/externalversions/crdmetrics"
+	internalinterfaces "github.com/rexagod/crdmetrics/pkg/generated/informers/externalversions/internalinterfaces"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -228,6 +228,7 @@ type SharedInformerFactory interface {
 
 	// Start initializes all requested informers. They are handled in goroutines
 	// which run until the stop channel gets closed.
+	// Warning: Start does not block. When run in a go-routine, it will race with a later WaitForCacheSync.
 	Start(stopCh <-chan struct{})
 
 	// Shutdown marks a factory as shutting down. At that point no new
@@ -253,9 +254,9 @@ type SharedInformerFactory interface {
 	// client.
 	InformerFor(obj runtime.Object, newFunc internalinterfaces.NewInformerFunc) cache.SharedIndexInformer
 
-	Crsm() crsm.Interface
+	Crdmetrics() crdmetrics.Interface
 }
 
-func (f *sharedInformerFactory) Crsm() crsm.Interface {
-	return crsm.New(f, f.namespace, f.tweakListOptions)
+func (f *sharedInformerFactory) Crdmetrics() crdmetrics.Interface {
+	return crdmetrics.New(f, f.namespace, f.tweakListOptions)
 }

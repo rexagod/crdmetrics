@@ -19,20 +19,20 @@ fi
 retry_count=0
 max_retries=10
 REALPATH_KUBESTATEMETRICS_CUSTOMRESOURCESTATE_CONFIG=$(realpath "$KUBESTATEMETRICS_CUSTOMRESOURCESTATE_CONFIG")
-date >> /tmp/crsm_benchmark.txt
+date >> /tmp/crdmetrics_benchmark.txt
 function terminate() { # Terminate dangling process in case of a manual interrupt.
   kill -9 "$PID"
   wait "$PID"
 }
 trap terminate SIGINT SIGTERM
 
-# Run CRSM.
+# Run CRDMetrics.
 "$KUBECTL" scale deployment "$PROJECT_NAME"-controller --replicas=0 -n "$LOCAL_NAMESPACE" || true
 
 # Start the timer.
 TInit=$(gdate +%s%3N)
 
-# Run CRSM.
+# Run CRDMetrics.
 ./"$PROJECT_NAME" --kubeconfig "$KUBECONFIG" &
 PID=$!
 echo -e "[$PID&]"
@@ -62,9 +62,9 @@ wait $PID
 
 # Preserve the time differences.
 # shellcheck disable=SC2129
-echo -e "[CRSM]" >> /tmp/crsm_benchmark.txt
-echo -e "BUILD:\t$((TTBuild - TInit))ms" >> /tmp/crsm_benchmark.txt
-echo -e "RTT:\t$((TTQuery - TTBuild))ms" >> /tmp/crsm_benchmark.txt
+echo -e "[CRDMETRICS]" >> /tmp/crdmetrics_benchmark.txt
+echo -e "BUILD:\t$((TTBuild - TInit))ms" >> /tmp/crdmetrics_benchmark.txt
+echo -e "RTT:\t$((TTQuery - TTBuild))ms" >> /tmp/crdmetrics_benchmark.txt
 
 # If $KUBESTATEMETRICS_DIR is not set, or points to a non-directory, fail.
 if [ -z "$KUBESTATEMETRICS_DIR" ] || [ ! -d "$KUBESTATEMETRICS_DIR" ]; then
@@ -117,9 +117,9 @@ TTQuery=$(gdate +%s%3N)
 
 # Preserve the time differences.
 # shellcheck disable=SC2129
-echo -e "[KSM]" >> /tmp/crsm_benchmark.txt
-echo -e "BUILD:\t$((TTBuild - TInit))ms" >> /tmp/crsm_benchmark.txt
-echo -e "RTT:\t$((TTQuery - TTBuild))ms" >> /tmp/crsm_benchmark.txt
+echo -e "[KUBESTATEMETRICS]" >> /tmp/crdmetrics_benchmark.txt
+echo -e "BUILD:\t$((TTBuild - TInit))ms" >> /tmp/crdmetrics_benchmark.txt
+echo -e "RTT:\t$((TTQuery - TTBuild))ms" >> /tmp/crdmetrics_benchmark.txt
 
 # Set working directory to original directory.
 cd - || exit 1
@@ -129,4 +129,4 @@ kill -9 $PID
 wait $PID
 
 # Show the benchmark results.
-cat /tmp/crsm_benchmark.txt
+cat /tmp/crdmetrics_benchmark.txt

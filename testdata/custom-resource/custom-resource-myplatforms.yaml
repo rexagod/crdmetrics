@@ -1,16 +1,16 @@
 apiVersion: contoso.com/v1alpha1
 kind: MyPlatform
 metadata:
-  name: test-dotnet-app
+  name: test-sample
   namespace: default
   labels:
     foo: "1"
     bar: "2"
-    job: "crsm"
+    job: "crdmetrics"
   annotations:
     id: "1000"
 spec:
-  appId: testdotnetapp
+  appId: test-sample
   language: csharp
   os: linux
   instanceSize: small

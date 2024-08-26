@@ -1,11 +1,11 @@
 /*
-Copyright 2024 The Kubernetes CRSM Authors.
+Copyright 2024 The Kubernetes crdmetrics Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-   http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -48,27 +48,27 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	versioncollector "github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/rexagod/crsm/internal/version"
-	"github.com/rexagod/crsm/pkg/apis/crsm/v1alpha1"
-	clientset "github.com/rexagod/crsm/pkg/generated/clientset/versioned"
-	crsmscheme "github.com/rexagod/crsm/pkg/generated/clientset/versioned/scheme"
-	informers "github.com/rexagod/crsm/pkg/generated/informers/externalversions"
+	"github.com/rexagod/crdmetrics/internal/version"
+	"github.com/rexagod/crdmetrics/pkg/apis/crdmetrics/v1alpha1"
+	clientset "github.com/rexagod/crdmetrics/pkg/generated/clientset/versioned"
+	crdmetricsscheme "github.com/rexagod/crdmetrics/pkg/generated/clientset/versioned/scheme"
+	informers "github.com/rexagod/crdmetrics/pkg/generated/informers/externalversions"
 )
 
-// Controller is the controller implementation for CRSMR resources.
+// Controller is the controller implementation for managed resources.
 type Controller struct {
 
 	// kubeclientset is a standard kubernetes clientset, required for native operations.
 	kubeclientset kubernetes.Interface
 
-	// crsmClientset is a clientset for our own API group.
-	crsmClientset clientset.Interface
+	// crdmetricsClientset is a clientset for our own API group.
+	crdmetricsClientset clientset.Interface
 
 	// dynamicClientset is a clientset for CRD operations.
 	dynamicClientset dynamic.Interface
 
-	// crsmInformerFactory is a shared informer factory for CRSM resources.
-	crsmInformerFactory informers.SharedInformerFactory
+	// crdmetricsInformerFactory is a shared informer factory for managed resources.
+	crdmetricsInformerFactory informers.SharedInformerFactory
 
 	// workqueue is a rate limited work queue. This is used to queue work to be processed instead of performing it as
 	// soon as a change happens. This means we can ensure we only process a fixed amount of resources at a time, and
@@ -78,19 +78,19 @@ type Controller struct {
 	// recorder is an event recorder for recording event resources.
 	recorder record.EventRecorder
 
-	// crsmUIDToStores is the handler's internal stores map. It records all stores associated with a CRSM resource.
-	crsmUIDToStores map[types.UID][]*StoreType
+	// crdmetricsUIDToStores is the handler's internal stores map. It records all stores associated with a managed resource.
+	crdmetricsUIDToStores map[types.UID][]*StoreType
 
 	// options is the collection of command-line options.
 	options *Options
 }
 
 // NewController returns a new sample controller.
-func NewController(ctx context.Context, options *Options, kubeClientset kubernetes.Interface, crsmClientset clientset.Interface, dynamicClientset dynamic.Interface) *Controller {
+func NewController(ctx context.Context, options *Options, kubeClientset kubernetes.Interface, crdmetricsClientset clientset.Interface, dynamicClientset dynamic.Interface) *Controller {
 	logger := klog.FromContext(ctx)
 
 	// Add native resources to the default Kubernetes Scheme so Events can be logged for them.
-	utilruntime.Must(crsmscheme.AddToScheme(scheme.Scheme))
+	utilruntime.Must(crdmetricsscheme.AddToScheme(scheme.Scheme))
 
 	// Initialize the controller.
 	eventBroadcaster := record.NewBroadcaster()
@@ -110,25 +110,25 @@ func NewController(ctx context.Context, options *Options, kubeClientset kubernet
 	)
 
 	controller := &Controller{
-		kubeclientset:       kubeClientset,
-		crsmClientset:       crsmClientset,
-		dynamicClientset:    dynamicClientset,
-		crsmInformerFactory: informers.NewSharedInformerFactory(crsmClientset, 0),
-		workqueue:           workqueue.NewRateLimitingQueue(ratelimiter),
-		recorder:            recorder,
-		options:             options,
+		kubeclientset:             kubeClientset,
+		crdmetricsClientset:       crdmetricsClientset,
+		dynamicClientset:          dynamicClientset,
+		crdmetricsInformerFactory: informers.NewSharedInformerFactory(crdmetricsClientset, 0),
+		workqueue:                 workqueue.NewRateLimitingQueue(ratelimiter),
+		recorder:                  recorder,
+		options:                   options,
 	}
 
-	// Set up event handlers for CRSMR resources.
-	_, err := controller.crsmInformerFactory.Crsm().V1alpha1().CustomResourceStateMetricsResources().Informer().
+	// Set up event handlers for managed resources.
+	_, err := controller.crdmetricsInformerFactory.Crdmetrics().V1alpha1().CRDMetricsResources().Informer().
 		AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
-				controller.enqueueCRSMResource(obj, addEvent)
+				controller.enqueueCRDMetrics(obj, addEvent)
 			},
 			UpdateFunc: func(old, new interface{}) {
-				oldCRSMR := old.(*v1alpha1.CustomResourceStateMetricsResource)
-				newCRSMR := new.(*v1alpha1.CustomResourceStateMetricsResource)
-				if oldCRSMR.ResourceVersion == newCRSMR.ResourceVersion ||
+				oldCRDMetrics := old.(*v1alpha1.CRDMetricsResource)
+				newCRDMetrics := new.(*v1alpha1.CRDMetricsResource)
+				if oldCRDMetrics.ResourceVersion == newCRDMetrics.ResourceVersion ||
 
 					// NOTE: Don't add to workqueue if the event stemmed from a status update, else this will create a
 					// reconciliation loop; the resource status update triggers the informer which in turn triggers a
@@ -136,15 +136,15 @@ func NewController(ctx context.Context, options *Options, kubeClientset kubernet
 					// also applies to other non-spec fields that are updated, such as labels, but those are handled in
 					// the event handler.
 					// Queue only for `spec` changes.
-					reflect.DeepEqual(oldCRSMR.Spec, newCRSMR.Spec) {
-					logger.V(10).Info("Skipping event", "[-old +new]", cmp.Diff(oldCRSMR, newCRSMR))
+					reflect.DeepEqual(oldCRDMetrics.Spec, newCRDMetrics.Spec) {
+					logger.V(10).Info("Skipping event", "[-old +new]", cmp.Diff(oldCRDMetrics, newCRDMetrics))
 					return
 				}
-				logger.V(4).Info("Update event", "[-old +new]", cmp.Diff(oldCRSMR.Spec.ConfigurationYAML, newCRSMR.Spec.ConfigurationYAML))
-				controller.enqueueCRSMResource(new, updateEvent)
+				logger.V(4).Info("Update event", "[-old +new]", cmp.Diff(oldCRDMetrics.Spec.ConfigurationYAML, newCRDMetrics.Spec.ConfigurationYAML))
+				controller.enqueueCRDMetrics(new, updateEvent)
 			},
 			DeleteFunc: func(obj interface{}) {
-				controller.enqueueCRSMResource(obj, deleteEvent)
+				controller.enqueueCRDMetrics(obj, deleteEvent)
 			},
 		})
 	if err != nil {
@@ -155,8 +155,8 @@ func NewController(ctx context.Context, options *Options, kubeClientset kubernet
 	return controller
 }
 
-// enqueueCRSMResource takes a CRSMR resource and converts it into a namespace/name key.
-func (c *Controller) enqueueCRSMResource(obj interface{}, event eventType) {
+// enqueueCRDMetrics takes a managed resource and converts it into a namespace/name key.
+func (c *Controller) enqueueCRDMetrics(obj interface{}, event eventType) {
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -177,8 +177,8 @@ func (c *Controller) Run(ctx context.Context, workers int) error {
 	logger.V(4).Info("Waiting for informer caches to sync")
 
 	// Start the informer factories to begin populating the informer caches.
-	c.crsmInformerFactory.Start(ctx.Done())
-	if ok := cache.WaitForCacheSync(ctx.Done(), c.crsmInformerFactory.Crsm().V1alpha1().CustomResourceStateMetricsResources().Informer().HasSynced); !ok {
+	c.crdmetricsInformerFactory.Start(ctx.Done())
+	if ok := cache.WaitForCacheSync(ctx.Done(), c.crdmetricsInformerFactory.Crdmetrics().V1alpha1().CRDMetricsResources().Informer().HasSynced); !ok {
 		return stderrors.New("failed to wait for caches to sync")
 	}
 
@@ -198,7 +198,7 @@ func (c *Controller) Run(ctx context.Context, workers int) error {
 	)
 
 	// Build servers.
-	c.crsmUIDToStores = make(map[types.UID][]*StoreType)
+	c.crdmetricsUIDToStores = make(map[types.UID][]*StoreType)
 	selfHost := *c.options.SelfHost
 	selfPort := *c.options.SelfPort
 	selfAddr := net.JoinHostPort(selfHost, strconv.Itoa(selfPort))
@@ -213,7 +213,7 @@ func (c *Controller) Run(ctx context.Context, workers int) error {
 	logger.V(1).Info("Configuring main server", "address", mainAddr)
 	mainInstance := newMainServer(
 		mainAddr,
-		c.crsmUIDToStores,
+		c.crdmetricsUIDToStores,
 		requestDurationVec,
 	)
 	main := mainInstance.build(ctx, c.kubeclientset, registry)
@@ -309,15 +309,15 @@ func (c *Controller) syncHandler(ctx context.Context, key string, event string) 
 		return nil // Do not requeue.
 	}
 
-	// Get the CRSMR resource with this namespace and name.
-	resource, err := c.crsmInformerFactory.Crsm().V1alpha1().CustomResourceStateMetricsResources().Lister().
-		CustomResourceStateMetricsResources(namespace).Get(name)
+	// Get the managed resource with this namespace and name.
+	resource, err := c.crdmetricsInformerFactory.Crdmetrics().V1alpha1().CRDMetricsResources().Lister().
+		CRDMetricsResources(namespace).Get(name)
 	if err != nil {
 		if !errors.IsNotFound(err) {
-			return fmt.Errorf("error getting CustomResourceStateMetricsResource %q: %w", klog.KRef(namespace, name), err)
+			return fmt.Errorf("error getting CRDMetricsResource %q: %w", klog.KRef(namespace, name), err)
 		}
 
-		resource = &v1alpha1.CustomResourceStateMetricsResource{}
+		resource = &v1alpha1.CRDMetricsResource{}
 		resource.SetName(name)
 	}
 
@@ -362,9 +362,9 @@ func (c *Controller) handleObject(ctx context.Context, objectI interface{}, even
 	logger = klog.LoggerWithValues(klog.FromContext(ctx), "key", klog.KObj(object), "event", event)
 	logger.V(1).Info("Processing object")
 	switch o := object.(type) {
-	case *v1alpha1.CustomResourceStateMetricsResource:
-		handler := newCRSMHandler(c.kubeclientset, c.crsmClientset, c.dynamicClientset)
-		return handler.handleEvent(ctx, c.crsmUIDToStores, event, o, *c.options.TryNoCache)
+	case *v1alpha1.CRDMetricsResource:
+		handler := newCRDMetricsHandler(c.kubeclientset, c.crdmetricsClientset, c.dynamicClientset)
+		return handler.handleEvent(ctx, c.crdmetricsUIDToStores, event, o, *c.options.TryNoCache)
 	default:
 		logger.Error(stderrors.New("unknown object type"), "cannot handle object")
 		return nil // Do not requeue.

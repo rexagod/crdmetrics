@@ -11,7 +11,7 @@ PID=$!
 echo -e "\n[Running controller in background with PID: $PID.]\n"
 
 # Wait until telemetry is up.
-while ! nc -z localhost "$CRSM_SELF_PORT"; do sleep 1; done
+while ! nc -z localhost "$CRDMETRICS_SELF_PORT"; do sleep 1; done
 
 # Run tests.
 echo -e "\n[Running tests with timeout: $TIMEOUT seconds.]\n"

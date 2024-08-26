@@ -1,14 +1,16 @@
 # Variables are declared in the order in which they occur.
 ASSETS_DIR ?= assets
 BENCH_TIMEOUT ?= 300
+BOILERPLATE_GO_COMPLIANT ?= hack/boilerplate.go.txt
+BOILERPLATE_YAML_COMPLIANT ?= hack/boilerplate.yaml.txt
 BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
 BUILD_DATE ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 BUILD_TAG ?= $(shell git describe --tags --exact-match 2>/dev/null || echo "latest")
 COMMON = github.com/prometheus/common
 CONTROLLER_GEN ?= $(shell go env GOPATH)/bin/controller-gen
 CONTROLLER_GEN_APIS_DIR ?= pkg/apis
-CONTROLLER_GEN_OUT_DIR ?= /tmp/crsm/controller-gen
-CONTROLLER_GEN_VERSION ?= v0.15.0
+CONTROLLER_GEN_OUT_DIR ?= /tmp/crdmetrics/controller-gen
+CONTROLLER_GEN_VERSION ?= v0.16.1
 GIT_COMMIT = $(shell git rev-parse --short HEAD)
 GO ?= go
 GOFMT ?= gofmt
@@ -25,7 +27,7 @@ MD_FILES = $(shell find . \( -type d -name 'vendor' -o -type d -name $(patsubst 
 POD_NAMESPACE ?= default
 PPROF_OPTIONS ?=
 PPROF_PORT ?= 9998
-PROJECT_NAME = custom-resource-state-metrics
+PROJECT_NAME = crdmetrics
 RUNNER = $(shell id -u -n)@$(shell hostname)
 TEST_PKG ?= ./tests
 TEST_RUN_PATTERN ?= .
@@ -64,8 +66,10 @@ setup:
 .PHONY: manifests
 manifests:
 	@# Populate manifests/.
-	@$(CONTROLLER_GEN) rbac:roleName=$(PROJECT_NAME) crd paths=./$(CONTROLLER_GEN_APIS_DIR)/... output:crd:dir=$(CONTROLLER_GEN_OUT_DIR) output:rbac:artifacts:config=$(CONTROLLER_GEN_OUT_DIR) && \
-	mv "$(CONTROLLER_GEN_OUT_DIR)/crsm.instrumentation.k8s-sigs.io_customresourcestatemetricsresources.yaml" "manifests/custom-resource-definition.yaml" && \
+	@$(CONTROLLER_GEN) object:headerFile=$(BOILERPLATE_GO_COMPLIANT) \
+	rbac:headerFile=$(BOILERPLATE_YAML_COMPLIANT),roleName=$(PROJECT_NAME) crd:headerFile=$(BOILERPLATE_YAML_COMPLIANT) paths=./$(CONTROLLER_GEN_APIS_DIR)/... \
+	output:rbac:artifacts:config=$(CONTROLLER_GEN_OUT_DIR) output:crd:dir=$(CONTROLLER_GEN_OUT_DIR) && \
+	mv "$(CONTROLLER_GEN_OUT_DIR)/crdmetrics.instrumentation.k8s-sigs.io_crdmetricsresources.yaml" "manifests/custom-resource-definition.yaml" && \
 	mv "$(CONTROLLER_GEN_OUT_DIR)/role.yaml" "manifests/cluster-role.yaml"
 
 .PHONY: codegen
@@ -147,8 +151,8 @@ pprof:
 test:
 	@\
 	POD_NAMESPACE=$(POD_NAMESPACE) \
-	CRSM_SELF_PORT=8887 \
-	CRSM_MAIN_PORT=8888 \
+	CRDMETRICS_SELF_PORT=8887 \
+	CRDMETRICS_MAIN_PORT=8888 \
 	GO=$(GO) \
 	TEST_TIMEOUT=$(TEST_TIMEOUT) \
 	TEST_RUN_PATTERN=$(TEST_RUN_PATTERN) \

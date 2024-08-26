@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Kubernetes custom-resource-state-metrics Authors.
+Copyright 2024 The Kubernetes crdmetrics Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ limitations under the License.
 package scheme
 
 import (
-	crsmv1alpha1 "github.com/rexagod/crsm/pkg/apis/crsm/v1alpha1"
+	crdmetricsv1alpha1 "github.com/rexagod/crdmetrics/pkg/apis/crdmetrics/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -31,7 +31,7 @@ var Scheme = runtime.NewScheme()
 var Codecs = serializer.NewCodecFactory(Scheme)
 var ParameterCodec = runtime.NewParameterCodec(Scheme)
 var localSchemeBuilder = runtime.SchemeBuilder{
-	crsmv1alpha1.AddToScheme,
+	crdmetricsv1alpha1.AddToScheme,
 }
 
 // AddToScheme adds all types of this clientset into the given scheme. This allows composition

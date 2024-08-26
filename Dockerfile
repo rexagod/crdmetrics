@@ -8,7 +8,7 @@ RUN go mod download
 
 COPY . .
 
-RUN make crsm
+RUN make crdmetrics
 
 FROM ubuntu:latest
 
@@ -16,6 +16,6 @@ RUN apt-get update && apt-get install -y ca-certificates
 
 WORKDIR /
 
-COPY --from=builder /crsm .
+COPY --from=builder /crdmetrics .
 
-CMD ["./crsm"]
+CMD ["./crdmetrics"]

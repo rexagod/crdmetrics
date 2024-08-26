@@ -1,11 +1,11 @@
 /*
-Copyright 2024 The Kubernetes CRSM Authors.
+Copyright 2024 The Kubernetes crdmetrics Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-   http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -28,10 +28,10 @@ import (
 
 	"k8s.io/client-go/dynamic"
 
-	"github.com/rexagod/crsm/internal"
-	v "github.com/rexagod/crsm/internal/version"
-	clientset "github.com/rexagod/crsm/pkg/generated/clientset/versioned"
-	"github.com/rexagod/crsm/pkg/signals"
+	"github.com/rexagod/crdmetrics/internal"
+	v "github.com/rexagod/crdmetrics/internal/version"
+	clientset "github.com/rexagod/crdmetrics/pkg/generated/clientset/versioned"
+	"github.com/rexagod/crdmetrics/pkg/signals"
 
 	"go.uber.org/automaxprocs/maxprocs"
 
@@ -88,9 +88,9 @@ func main() {
 		logger.Error(err, "Error building kubernetes clientset")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
-	crsmClientset, err := clientset.NewForConfig(cfg)
+	crdmetricsClientset, err := clientset.NewForConfig(cfg)
 	if err != nil {
-		logger.Error(err, "Error building crsm clientset")
+		logger.Error(err, "Error building crdmetrics clientset")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 	dynamicClientset, err := dynamic.NewForConfig(cfg)
@@ -100,7 +100,7 @@ func main() {
 	}
 
 	// Start the controller.
-	c := internal.NewController(ctx, options, kubeClientset, crsmClientset, dynamicClientset)
+	c := internal.NewController(ctx, options, kubeClientset, crdmetricsClientset, dynamicClientset)
 	if err = c.Run(ctx, *options.Workers); err != nil {
 		logger.Error(err, "Error running controller")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
