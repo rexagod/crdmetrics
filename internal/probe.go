@@ -35,7 +35,7 @@ type probe interface {
 	getAsString() string
 
 	// Probe knows how to handle a health probe.
-	probe(context.Context, klog.Logger, kubernetes.Interface) http.Handler
+	probe(ctx context.Context, logger klog.Logger, client kubernetes.Interface) http.Handler
 }
 
 // healthz implements the probe interface.
@@ -139,7 +139,7 @@ func (r readyz) probe(ctx context.Context, logger klog.Logger, client kubernetes
 
 // genericProbe returns an http.Handler that delegates probes to the Kubernetes API.
 func genericProbe(ctx context.Context, p probe, logger klog.Logger, client kubernetes.Interface) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		got := client.CoreV1().RESTClient().Get().AbsPath(p.getAsString()).Do(ctx)
 		if got.Error() != nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -147,6 +147,7 @@ func genericProbe(ctx context.Context, p probe, logger klog.Logger, client kuber
 			if err != nil {
 				logger.Error(err, fmt.Sprintf("error writing response after %d bytes", n), "probeType", p.getAsString(), "source", p.getSource())
 			}
+
 			return
 		}
 
@@ -154,6 +155,7 @@ func genericProbe(ctx context.Context, p probe, logger klog.Logger, client kuber
 		n, err := w.Write([]byte(http.StatusText(http.StatusOK)))
 		if err != nil {
 			logger.Error(err, fmt.Sprintf("error writing response after %d bytes", n), "probeType", p.getAsString(), "source", p.getSource())
+
 			return
 		}
 	})

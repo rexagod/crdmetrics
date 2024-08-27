@@ -14,9 +14,9 @@ func TestMainServer(t *testing.T) {
 
 	// Test if /metrics response is as expected.
 	r := framework.NewRunner()
-	mainPort, found := os.LookupEnv(CRDMETRICS_MAIN_PORT)
+	mainPort, found := os.LookupEnv(CRDMetricsMainPort)
 	if !found {
-		t.Fatal(CRDMETRICS_MAIN_PORT + "is not set")
+		t.Fatal(CRDMetricsMainPort + "is not set")
 	}
 	mainMetricsURL := &url.URL{
 		Host:   "localhost:" + mainPort,
@@ -52,20 +52,20 @@ kube_customresource_platform_info_conformance{id="1000",os="linux",job="crdmetri
 func TestSelfServer(t *testing.T) {
 	t.Parallel()
 
-	r := framework.NewRunner()
+	runner := framework.NewRunner()
 	const httpRequestDurationSeconds = "http_request_duration_seconds"
 
 	// Fetch the recorded in-flight time for main /metrics endpoint.
-	selfPort, found := os.LookupEnv(CRDMETRICS_SELF_PORT)
+	selfPort, found := os.LookupEnv(CRDMetricsSelfPort)
 	if !found {
-		t.Fatal(CRDMETRICS_SELF_PORT + "is not set")
+		t.Fatal(CRDMetricsSelfPort + "is not set")
 	}
 	selfMetricsURL := &url.URL{
 		Host:   "localhost:" + selfPort,
 		Path:   "/metrics",
 		Scheme: "http",
 	}
-	telemetryMetrics, err := r.GetMetrics(selfMetricsURL)
+	telemetryMetrics, err := runner.GetMetrics(selfMetricsURL)
 	if err != nil {
 		t.Fatalf("failed to get metrics: %v", err)
 	}
@@ -85,13 +85,13 @@ func TestSelfServer(t *testing.T) {
 		Path:   "/metrics",
 		Scheme: "http",
 	}
-	_, err = r.GetRaw(mainURL)
+	_, err = runner.GetRaw(mainURL)
 	if err != nil {
 		t.Fatalf("failed to get metrics: %v", err)
 	}
 
 	// Check if the recorded in-flight time for main /metrics requests increased.
-	telemetryMetrics, err = r.GetMetrics(selfMetricsURL)
+	telemetryMetrics, err = runner.GetMetrics(selfMetricsURL)
 	if err != nil {
 		t.Fatalf("failed to get metrics: %v", err)
 	}
@@ -100,6 +100,3 @@ func TestSelfServer(t *testing.T) {
 		t.Fatalf("got in-flight duration total %f, want %f", newInFlightDurationTotal, inFlightDurationTotal)
 	}
 }
-
-// nolint:godox
-// TODO: Add one for event handler's cycle.

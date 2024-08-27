@@ -1,30 +1,40 @@
 # Reference: https://github.com/golangci/golangci-lint/blob/master/.golangci.reference.yml
 run:
-  timeout: 5m
+  timeout: 3m
 
 issues:
   exclude-files:
     - pkg/apis/crdmetrics/register.go
     - pkg/apis/crdmetrics/v1alpha1/register.go
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - lll
 
 linters:
   disable:
-    - exhaustruct
     - err113
-    - gci
-    - makezero
+    - exhaustruct
+    - gochecknoglobals
+    - ireturn
+    - mnd
+    - wsl
   presets:
     - bugs
     - comment
+    - complexity
     - error
     - import
+    - metalinter
+    - module
     - performance
+    - style
     - test
     - unused
 
 linters-settings:
-  perfsprint:
-    strconcat: false
+  cyclop:
+    max-complexity: 12 # FYI: Go Report Card warns on functions with cyclomatic complexity > 15.
   depguard:
     rules:
       main:
@@ -33,3 +43,16 @@ linters-settings:
             desc: "Use 'errors' or 'fmt' instead."
           - pkg: "golang.org/x/exp/slices"
             desc: "Use 'slices' instead."
+  funlen:
+    lines: -1
+    statements: 85
+  lll:
+    line-length: 150
+  perfsprint:
+    strconcat: false
+  varnamelen:
+    max-distance: 20
+    check-receiver: false
+    ignore-type-assert-ok: true
+    ignore-map-index-ok: true
+    ignore-chan-recv-ok: true

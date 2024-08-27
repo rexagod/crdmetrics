@@ -4,7 +4,7 @@
 
 ## Summary
 
-Custom Resource Definition Metrics (`crdmetrics`) is a Kubernetes controller that builds on Kube-State-Metrics' Custom Resource State's ideology and generates metrics for custom resources based on the configuration specified in its managed resource, `crdmetrics`.
+Custom Resource Definition Metrics (`crdmetrics`) is a Kubernetes controller that builds on Kube-State-Metrics' Custom Resource State's ideology and generates metrics for custom resources based on the configuration specified in its managed resource, `CRDMetricsResource`.
 
 The project's [conformance benchmarking](./tests/bench/bench.sh) shows 3x faster RTT for `crdmetrics` as compared to Kube-State-Metrics' Custom Resource Definition Metrics ([f8aa7d9b](https://github.com/kubernetes/kube-state-metrics/commit/f8aa7d9bb9d8e29876e19f4859391a54a7e61d63)) feature-set:
 
@@ -46,7 +46,10 @@ In the order of priority:
 - [X] Benchmark(s) for Kube-State-Metrics' [Custom Resource State API](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/extend/customresourcestate-metrics.md#multiple-metricskitchen-sink).
 - [X] E2E tests covering the controller's basic functionality.
 - [X] `s/CRSM/CRDMetrics`.
-- [ ] [Graduate to ALPHA](https://github.com/kubernetes/enhancements/issues/4785), i.e., draft out a KEP.
-- [ ] gRPC server for metrics generation.
+- [X] [Graduate to ALPHA](https://github.com/kubernetes/enhancements/issues/4785), i.e., draft out a KEP.
+- [ ] Make `CRDMetricsResource` namespaced-scope. This allows for:
+  - per-namespace configuration (separate configurations between teams), and,
+  - garbage collection, since currently the namespace-scoped deployment manages its cluster-scoped resources, which are not garbage collect-able in Kubernetes by design.
+- [ ] See if cardinality thresholds can be levied in horizontally-scaled setups.
 
 ###### [License](./LICENSE)

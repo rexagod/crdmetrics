@@ -19,7 +19,7 @@ metadata:
   namespace: default
 spec:
   # NOTE: "unstructured" is the default resolver.
-  configurationYAML: |-
+  configuration: |-
     stores:
       - g: "contoso.com"
         v: "v1alpha1"

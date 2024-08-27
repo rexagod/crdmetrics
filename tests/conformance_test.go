@@ -15,9 +15,9 @@ func TestConformance(t *testing.T) {
 
 	// Test if /metrics response is as expected.
 	r := framework.NewRunner()
-	mainPort, found := os.LookupEnv(CRDMETRICS_MAIN_PORT)
+	mainPort, found := os.LookupEnv(CRDMetricsMainPort)
 	if !found {
-		t.Fatal(CRDMETRICS_MAIN_PORT + "is not set")
+		t.Fatal(CRDMetricsMainPort + "is not set")
 	}
 	mainMetricsURL := &url.URL{
 		Host:   "localhost:" + mainPort,

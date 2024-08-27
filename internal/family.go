@@ -21,10 +21,9 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/rexagod/crdmetrics/pkg/resolver"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/klog/v2"
-
-	"github.com/rexagod/crdmetrics/pkg/resolver"
 )
 
 const (
@@ -83,32 +82,23 @@ type FamilyType struct {
 	LabelValues []string `yaml:"labelValues,omitempty"`
 }
 
-// rawWith returns the given family in its byte representation.
-func (f *FamilyType) rawWith(u *unstructured.Unstructured) string {
+// rawFrom returns the given family in its byte representation.
+func (f *FamilyType) rawFrom(unstructured *unstructured.Unstructured) string {
 	logger := f.logger.WithValues("family", f.Name)
 
-	s := strings.Builder{}
-	for _, m := range f.Metrics {
-		ss := strings.Builder{}
+	familyRawBuilder := strings.Builder{}
+	for _, metric := range f.Metrics {
+		metricRawBuilder := strings.Builder{}
 
 		// Inherit the label keys and values.
-		m.LabelKeys = append(m.LabelKeys, f.LabelKeys...)
-		m.LabelValues = append(m.LabelValues, f.LabelValues...)
+		metric.LabelKeys = append(metric.LabelKeys, f.LabelKeys...)
+		metric.LabelValues = append(metric.LabelValues, f.LabelValues...)
 
 		// Inherit the resolver.
-		var resolverInstance resolver.Resolver
-		if m.Resolver == ResolverTypeNone {
-			m.Resolver = f.Resolver
-		}
-		switch m.Resolver {
-		case ResolverTypeNone:
-			fallthrough
-		case ResolverTypeCEL:
-			resolverInstance = resolver.NewCELResolver(logger)
-		case ResolverTypeUnstructured:
-			resolverInstance = resolver.NewUnstructuredResolver(logger)
-		default:
-			logger.V(1).Error(fmt.Errorf("error resolving metric: unknown resolver %q", m.Resolver), "skipping")
+		resolverInstance, err := f.resolver(metric.Resolver)
+		if err != nil {
+			logger.V(1).Error(fmt.Errorf("error resolving metric: %w", err), "skipping")
+
 			continue
 		}
 
@@ -117,8 +107,8 @@ func (f *FamilyType) rawWith(u *unstructured.Unstructured) string {
 			resolvedLabelKeys   []string
 			resolvedLabelValues []string
 		)
-		for i, query := range m.LabelValues {
-			resolvedLabelset := resolverInstance.Resolve(query, u.Object)
+		for i, query := range metric.LabelValues {
+			resolvedLabelset := resolverInstance.Resolve(query, unstructured.Object)
 
 			// If the query is found in the resolved labelset, append the resolved value.
 			if resolvedLabelValue, ok := resolvedLabelset[query]; ok {
@@ -126,7 +116,7 @@ func (f *FamilyType) rawWith(u *unstructured.Unstructured) string {
 
 				// Label keys are not resolved if the returned labelset for the same label key exists.
 				resolvedLabelKeys = append(resolvedLabelKeys, strings.ToLower(regexp.MustCompile(`\W`).
-					ReplaceAllString(m.LabelKeys[i], "_")))
+					ReplaceAllString(metric.LabelKeys[i], "_")))
 
 				// If the query is not found in the resolved labelset, it is now redundant as a label value.
 			} else {
@@ -136,36 +126,57 @@ func (f *FamilyType) rawWith(u *unstructured.Unstructured) string {
 					// Label keys are resolved (with the original label keys being the new label key's prefix) if the
 					// returned labelset for the same label key does not exist.
 					resolvedLabelKeys = append(resolvedLabelKeys, strings.ToLower(regexp.MustCompile(`\W`).
-						ReplaceAllString(m.LabelKeys[i]+k, "_")))
+						ReplaceAllString(metric.LabelKeys[i]+k, "_")))
 				}
 			}
 		}
 
 		// Resolve the metric value.
-		resolvedValue, found := resolverInstance.Resolve(m.Value, u.Object)[m.Value]
+		resolvedValue, found := resolverInstance.Resolve(metric.Value, unstructured.Object)[metric.Value]
 		if !found {
-			logger.V(1).Error(fmt.Errorf("error resolving metric value %q", m.Value), "skipping")
+			logger.V(1).Error(fmt.Errorf("error resolving metric value %q", metric.Value), "skipping")
+
 			continue
 		}
 
 		// Write the metric.
-		ss.WriteString(kubeCustomResourcePrefix)
-		ss.WriteString(f.Name)
-		err := writeMetricTo(
-			&ss,
-			u.GroupVersionKind().Group, u.GroupVersionKind().Version, u.GroupVersionKind().Kind,
+		metricRawBuilder.WriteString(kubeCustomResourcePrefix)
+		metricRawBuilder.WriteString(f.Name)
+		err = writeMetricTo(
+			&metricRawBuilder,
+			unstructured.GroupVersionKind().Group, unstructured.GroupVersionKind().Version, unstructured.GroupVersionKind().Kind,
 			resolvedValue,
 			resolvedLabelKeys, resolvedLabelValues,
 		)
 		if err != nil {
 			logger.V(1).Error(fmt.Errorf("error writing metric: %w", err), "skipping")
+
 			continue
 		}
 
-		s.WriteString(ss.String())
+		familyRawBuilder.WriteString(metricRawBuilder.String())
 	}
 
-	return s.String()
+	return familyRawBuilder.String()
+}
+
+func (f *FamilyType) resolver(inheritedResolver ResolverType) (resolver.Resolver, error) {
+	var resolverInstance resolver.Resolver
+	if inheritedResolver == ResolverTypeNone {
+		inheritedResolver = f.Resolver
+	}
+	switch inheritedResolver {
+	case ResolverTypeNone:
+		fallthrough
+	case ResolverTypeCEL:
+		resolverInstance = resolver.NewCELResolver(f.logger)
+	case ResolverTypeUnstructured:
+		resolverInstance = resolver.NewUnstructuredResolver(f.logger)
+	default:
+		return nil, fmt.Errorf("error resolving metric: unknown resolver %q", inheritedResolver)
+	}
+
+	return resolverInstance, nil
 }
 
 // buildHeaders generates the header for the given family.

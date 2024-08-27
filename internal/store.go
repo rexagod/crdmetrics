@@ -115,7 +115,6 @@ func (s *StoreType) Add(objectI interface{}) error {
 	// Generate metrics from the object.
 	familyMetrics := make([]string, len(s.Families))
 	for i, f := range s.Families {
-
 		// Inherit the resolver.
 		if f.Resolver == ResolverTypeNone {
 			f.Resolver = s.Resolver
@@ -127,7 +126,7 @@ func (s *StoreType) Add(objectI interface{}) error {
 
 		// Generate the metrics.
 		f.logger = s.logger
-		familyMetrics[i] = f.rawWith(unstructuredObject)
+		familyMetrics[i] = f.rawFrom(unstructuredObject)
 		s.logger.V(4).Info("Add", "family", f.Name, "metrics", familyMetrics[i])
 	}
 
@@ -141,6 +140,7 @@ func (s *StoreType) Add(objectI interface{}) error {
 // Update updates the given object in the accumulator associated with its key.
 func (s *StoreType) Update(objectI interface{}) error {
 	s.logger.V(2).Info("Update", "defer", "Add")
+
 	return s.Add(objectI)
 }
 

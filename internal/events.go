@@ -24,6 +24,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rexagod/crdmetrics/internal/version"
+	"github.com/rexagod/crdmetrics/pkg/apis/crdmetrics/v1alpha1"
+	clientset "github.com/rexagod/crdmetrics/pkg/generated/clientset/versioned"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -31,10 +34,6 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
-
-	"github.com/rexagod/crdmetrics/internal/version"
-	"github.com/rexagod/crdmetrics/pkg/apis/crdmetrics/v1alpha1"
-	clientset "github.com/rexagod/crdmetrics/pkg/generated/clientset/versioned"
 )
 
 // eventType represents the type of event received from the informer.
@@ -64,7 +63,11 @@ type crdmetricsHandler struct {
 }
 
 // newCRDMetricsHandler creates a new crdmetricsHandler.
-func newCRDMetricsHandler(kubeClientset kubernetes.Interface, crdmetricsClientset clientset.Interface, dynamicClientset dynamic.Interface) *crdmetricsHandler {
+func newCRDMetricsHandler(
+	kubeClientset kubernetes.Interface,
+	crdmetricsClientset clientset.Interface,
+	dynamicClientset dynamic.Interface,
+) *crdmetricsHandler {
 	return &crdmetricsHandler{
 		kubeClientset:       kubeClientset,
 		crdmetricsClientset: crdmetricsClientset,
@@ -86,6 +89,7 @@ func (h *crdmetricsHandler) handleEvent(
 	resource, ok := o.(*v1alpha1.CRDMetricsResource)
 	if !ok {
 		logger.Error(fmt.Errorf("failed to cast object to %s", resource.GetObjectKind()), "cannot handle event")
+
 		return nil // Do not requeue.
 	}
 	kObj := klog.KObj(resource).String()
@@ -94,6 +98,7 @@ func (h *crdmetricsHandler) handleEvent(
 	err := h.updateMetadata(ctx, resource)
 	if err != nil {
 		logger.Error(fmt.Errorf("failed to update metadata for %s: %w", kObj, err), "cannot handle event")
+
 		return nil // Do not requeue.
 	}
 
@@ -101,25 +106,25 @@ func (h *crdmetricsHandler) handleEvent(
 	resource, err = h.emitSuccessOnResource(ctx, resource, metav1.ConditionFalse, fmt.Sprintf("Event handler received event: %s", event))
 	if err != nil {
 		logger.Error(fmt.Errorf("failed to emit success on %s: %w", kObj, err), "cannot update the resource")
+
 		return nil // Do not requeue.
 	}
 
 	// Process the fetched configuration.
-	configurationYAML := resource.Spec.ConfigurationYAML
+	configurationYAML := resource.Spec.Configuration
 	if configurationYAML == "" {
-
 		// This should never happen owing to the Kubebuilder check in place.
 		logger.Error(stderrors.New("configuration YAML is empty"), "cannot process the resource")
 		h.emitFailureOnResource(ctx, resource, "Configuration YAML is empty")
+
 		return nil
 	}
-	configurerInstance := newConfigurer(ctx, h.dynamicClientset, resource)
+	configurerInstance := newConfigurer(h.dynamicClientset, resource)
 
 	// dropStores drops associated stores between resource changes.
 	dropStores := func() {
 		resourceUID := resource.GetUID()
 		if _, ok = crdmetricsUIDToStoresMap[resourceUID]; ok {
-
 			// The associated stores are only reachable through the map. Deleting them will trigger the GC.
 			delete(crdmetricsUIDToStoresMap, resourceUID)
 		}
@@ -127,7 +132,6 @@ func (h *crdmetricsHandler) handleEvent(
 
 	// Handle the event.
 	switch event {
-
 	// Build all associated stores.
 	case addEvent.String(), updateEvent.String():
 		dropStores()
@@ -135,9 +139,10 @@ func (h *crdmetricsHandler) handleEvent(
 		if err != nil {
 			logger.Error(fmt.Errorf("failed to parse configuration YAML: %w", err), "cannot process the resource")
 			h.emitFailureOnResource(ctx, resource, fmt.Sprintf("Failed to parse configuration YAML: %s", err))
+
 			return nil
 		}
-		configurerInstance.build(crdmetricsUIDToStoresMap, tryNoCache)
+		configurerInstance.build(ctx, crdmetricsUIDToStoresMap, tryNoCache)
 
 	// Drop all associated stores.
 	case deleteEvent.String():
@@ -147,6 +152,7 @@ func (h *crdmetricsHandler) handleEvent(
 	default:
 		logger.Error(fmt.Errorf("unknown event type (%s)", event), "cannot process the resource")
 		h.emitFailureOnResource(ctx, resource, fmt.Sprintf("Unknown event type: %s", event))
+
 		return nil
 	}
 
@@ -154,6 +160,7 @@ func (h *crdmetricsHandler) handleEvent(
 	_, err = h.emitSuccessOnResource(ctx, resource, metav1.ConditionTrue, fmt.Sprintf("Event handler successfully processed event: %s", event))
 	if err != nil {
 		logger.Error(fmt.Errorf("failed to emit success on %s: %w", kObj, err), "cannot update the resource")
+
 		return nil // Do not requeue.
 	}
 
@@ -200,6 +207,7 @@ func (h *crdmetricsHandler) emitFailureOnResource(
 		Get(ctx, gotResource.GetName(), metav1.GetOptions{})
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("failed to get %s: %w", kObj, err))
+
 		return
 	}
 	resource.Status.Set(resource, metav1.Condition{
@@ -211,6 +219,7 @@ func (h *crdmetricsHandler) emitFailureOnResource(
 		UpdateStatus(ctx, resource, metav1.UpdateOptions{})
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("failed to emit failure on %s: %w", kObj, err))
+
 		return
 	}
 }

@@ -50,6 +50,8 @@ func NewOptions(logger klog.Logger) *Options {
 }
 
 // Read reads the command-line flags and applies overrides, if any.
+//
+//nolint:lll // Flag descriptions should be, and are, descriptive.
 func (o *Options) Read() {
 	o.AutoGOMAXPROCS = flag.Bool("auto-gomaxprocs", true, "Automatically set GOMAXPROCS to match CPU quota.")
 	o.RatioGOMEMLIMIT = flag.Float64("ratio-gomemlimit", 0.9, "GOMEMLIMIT to memory quota ratio.")
@@ -66,7 +68,6 @@ func (o *Options) Read() {
 
 	// Respect overrides, this also helps in testing without setting the same defaults in a bunch of places.
 	flag.VisitAll(func(f *flag.Flag) {
-
 		// Don't override flags that have been set. Environment variable do not take precedence over command-line flags.
 		if f.Value.String() != f.DefValue {
 			return

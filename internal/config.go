@@ -20,12 +20,11 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/rexagod/crdmetrics/pkg/apis/crdmetrics/v1alpha1"
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
-
-	"github.com/rexagod/crdmetrics/pkg/apis/crdmetrics/v1alpha1"
 )
 
 // configure defines behaviours for working with configuration(s), can be implemented to use configurations other than
@@ -33,10 +32,10 @@ import (
 type configure interface {
 
 	// Parse parses the given configuration.
-	parse(string) error
+	parse(raw string) error
 
 	// build builds the given configuration.
-	build(map[types.UID][]*StoreType, bool)
+	build(ctx context.Context, crdmetricsUIDToStoresMap map[types.UID][]*StoreType, tryNoCache bool)
 }
 
 // configuration defines the structured representation of a CEL-based YAML configuration.
@@ -46,9 +45,6 @@ type configuration struct {
 
 // configurer knows how to parse a CEL-based YAML configuration.
 type configurer struct {
-
-	// ctx is the controller's context.
-	ctx context.Context
 
 	// configuration is the structured configuration.
 	configuration configuration
@@ -65,28 +61,27 @@ var _ configure = &configurer{}
 
 // newConfigurer returns a new configurer.
 func newConfigurer(
-	ctx context.Context,
 	dynamicClientset dynamic.Interface,
 	resource *v1alpha1.CRDMetricsResource,
 ) *configurer {
 	return &configurer{
-		ctx:              ctx,
 		dynamicClientset: dynamicClientset,
 		resource:         resource,
 	}
 }
 
 // parse knows how to parse the given configuration.
-func (c *configurer) parse(configurationRaw string) error {
-	err := yaml.Unmarshal([]byte(configurationRaw), &c.configuration)
+func (c *configurer) parse(raw string) error {
+	err := yaml.Unmarshal([]byte(raw), &c.configuration)
 	if err != nil {
 		err = fmt.Errorf("error unmarshalling configuration: %w", err)
 	}
+
 	return err
 }
 
 // build knows how to build the given configuration.
-func (c *configurer) build(crdmetricsUIDToStoresMap map[types.UID][]*StoreType, tryNoCache bool) {
+func (c *configurer) build(ctx context.Context, crdmetricsUIDToStoresMap map[types.UID][]*StoreType, tryNoCache bool) {
 	for _, storeConfiguration := range c.configuration.Stores {
 		g, v, k, r := storeConfiguration.Group, storeConfiguration.Version, storeConfiguration.Kind, storeConfiguration.ResourceName
 		gvkWithR := gvkr{
@@ -98,7 +93,7 @@ func (c *configurer) build(crdmetricsUIDToStoresMap map[types.UID][]*StoreType, 
 		resolver := storeConfiguration.Resolver
 		labelKeys, labelValues := storeConfiguration.LabelKeys, storeConfiguration.LabelValues
 		s := buildStore(
-			c.ctx, c.dynamicClientset,
+			ctx, c.dynamicClientset,
 			gvkWithR,
 			families,
 			tryNoCache,

@@ -60,12 +60,13 @@ func buildStore(
 		lwo.ResourceVersionMatch = metav1.ResourceVersionMatchNotOlderThan
 		lwo.ResourceVersion = resourceVersionLatestBestEffort
 	}
-	lw := &cache.ListWatch{
+	listerwatcher := &cache.ListWatch{
 		ListFunc: func(_ metav1.ListOptions) (runtime.Object, error) {
 			o, err := dynamicClientset.Resource(gvr).List(ctx, lwo)
 			if err != nil {
 				err = fmt.Errorf("error listing %s with options %v: %w", gvr.String(), lwo, err)
 			}
+
 			return o, err
 		},
 		WatchFunc: func(_ metav1.ListOptions) (watch.Interface, error) {
@@ -73,6 +74,7 @@ func buildStore(
 			if err != nil {
 				err = fmt.Errorf("error watching %s with options %v: %w", gvr.String(), lwo, err)
 			}
+
 			return o, err
 		},
 	}
@@ -100,7 +102,7 @@ func buildStore(
 	// Create and start the reflector.
 	wrapper := &unstructured.Unstructured{}
 	wrapper.SetGroupVersionKind(gvkWithR.GroupVersionKind)
-	reflector := cache.NewReflectorWithOptions(lw, wrapper, s, cache.ReflectorOptions{
+	reflector := cache.NewReflectorWithOptions(listerwatcher, wrapper, s, cache.ReflectorOptions{
 		Name:         fmt.Sprintf("%#q reflector", gvr.String()),
 		ResyncPeriod: 0,
 	})

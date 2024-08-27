@@ -49,6 +49,7 @@ func (ur *UnstructuredResolver) Resolve(query string, unstructuredObjectMap map[
 	}
 	if err != nil {
 		logger.V(1).Info("ignoring resolution for query", "info", err)
+
 		return map[string]string{query: query}
 	}
 

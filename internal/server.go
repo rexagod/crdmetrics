@@ -18,6 +18,7 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -26,20 +27,19 @@ import (
 	"sync"
 	"time"
 
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/klog/v2"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/expfmt"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog/v2"
 )
 
 // server defines behaviours for a Prometheus-based exposition server.
 type server interface {
 
 	// Build sets up the server with the given gatherer.
-	build(context.Context, kubernetes.Interface, prometheus.Gatherer) *http.Server
+	build(ctx context.Context, client kubernetes.Interface, gatherer prometheus.Gatherer) *http.Server
 }
 
 // selfServer implements the server interface, and exposes telemetry metrics.
@@ -83,7 +83,7 @@ func newMainServer(addr string, m map[types.UID][]*StoreType, requestsDurationVe
 }
 
 // Build sets up the selfServer with the given gatherer.
-func (s *selfServer) build(ctx context.Context, c kubernetes.Interface, g prometheus.Gatherer) *http.Server {
+func (s *selfServer) build(ctx context.Context, client kubernetes.Interface, gatherer prometheus.Gatherer) *http.Server {
 	logger := klog.FromContext(ctx)
 	mux := http.NewServeMux()
 
@@ -95,16 +95,22 @@ func (s *selfServer) build(ctx context.Context, c kubernetes.Interface, g promet
 	mux.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
 
 	// Handle the metrics path.
-	metricsHandler := promhttp.HandlerFor(g, promhttp.HandlerOpts{
+	registry, ok := gatherer.(*prometheus.Registry)
+	if !ok {
+		logger.Error(errors.New("failed to cast gatherer to *prometheus.Registry"), "cannot handle metrics")
+
+		return nil
+	}
+	metricsHandler := promhttp.HandlerFor(gatherer, promhttp.HandlerOpts{
 		ErrorLog:      s.promHTTPLogger,
 		ErrorHandling: promhttp.ContinueOnError,
-		Registry:      g.(*prometheus.Registry),
+		Registry:      registry,
 	})
 	mux.Handle("/metrics", metricsHandler)
 
 	// Handle the readyz path.
 	readyzProber := newReadyz(s.source)
-	mux.Handle(readyzProber.getAsString(), readyzProber.probe(ctx, logger, c))
+	mux.Handle(readyzProber.getAsString(), readyzProber.probe(ctx, logger, client))
 
 	return &http.Server{
 		ErrorLog:          log.New(os.Stdout, s.source, log.LstdFlags|log.Lshortfile),
@@ -115,7 +121,7 @@ func (s *selfServer) build(ctx context.Context, c kubernetes.Interface, g promet
 }
 
 // Build sets up the mainServer with the given gatherer.
-func (s *mainServer) build(ctx context.Context, c kubernetes.Interface, _ prometheus.Gatherer) *http.Server {
+func (s *mainServer) build(ctx context.Context, client kubernetes.Interface, _ prometheus.Gatherer) *http.Server {
 	logger := klog.FromContext(ctx)
 	mux := http.NewServeMux()
 
@@ -143,11 +149,11 @@ func (s *mainServer) build(ctx context.Context, c kubernetes.Interface, _ promet
 
 	// Handle the healthz path.
 	healthzProber := newHealthz(s.source)
-	mux.Handle(healthzProber.getAsString(), healthzProber.probe(ctx, logger, c))
+	mux.Handle(healthzProber.getAsString(), healthzProber.probe(ctx, logger, client))
 
 	// Handle the livez path.
 	livezProber := newLivez(s.source)
-	mux.Handle(livezProber.getAsString(), livezProber.probe(ctx, logger, c))
+	mux.Handle(livezProber.getAsString(), livezProber.probe(ctx, logger, client))
 
 	return &http.Server{
 		ErrorLog:          log.New(os.Stdout, s.source, log.LstdFlags|log.Lshortfile),

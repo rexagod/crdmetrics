@@ -45,7 +45,7 @@ func (m metricsWriter) writeAllTo(w io.Writer) error {
 		s.mutex.RLock()
 		defer s.mutex.RUnlock()
 	}
-	for j := 0; j < len(m.stores); j++ {
+	for j := range len(m.stores) {
 		for i, header := range m.stores[j].headers {
 			if header != "" && header != "\n" {
 				header += "\n"

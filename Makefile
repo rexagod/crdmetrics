@@ -13,7 +13,6 @@ CONTROLLER_GEN_OUT_DIR ?= /tmp/crdmetrics/controller-gen
 CONTROLLER_GEN_VERSION ?= v0.16.1
 GIT_COMMIT = $(shell git rev-parse --short HEAD)
 GO ?= go
-GOFMT ?= gofmt
 GOLANGCI_LINT ?= $(shell go env GOPATH)/bin/golangci-lint
 GOLANGCI_LINT_CONFIG ?= .golangci.yaml
 GOLANGCI_LINT_VERSION ?= v1.60.3
@@ -203,20 +202,17 @@ lint-md: vale markdownfmt
 .PHONY: lint-md-fix
 lint-md-fix: vale markdownfmt-fix
 
-gofmt: $(GO_FILES)
-	@test -z "$(shell $(GOFMT) -l $(GO_FILES))" || (echo "\033[0;31mThe following files need to be formatted with 'gofmt -w':" $(shell $(GOFMT) -l $(GO_FILES)) "\033[0m" && exit 1)
-
-gofmt-fix: $(GO_FILES)
-	@$(GOFMT) -w . || exit 1
-
 golangci-lint: $(GO_FILES)
 	@$(GOLANGCI_LINT) run -c $(GOLANGCI_LINT_CONFIG)
 
+golangci-lint-fix: $(GO_FILES)
+	@$(GOLANGCI_LINT) run --fix -c $(GOLANGCI_LINT_CONFIG)
+
 .PHONY: lint-go
-lint-go: gofmt golangci-lint
+lint-go: golangci-lint
 
 .PHONY: lint-go-fix
-lint-go-fix: gofmt-fix golangci-lint
+lint-go-fix: golangci-lint-fix
 
 .PHONY: lint
 lint: lint-md lint-go

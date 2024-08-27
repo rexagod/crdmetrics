@@ -1,7 +1,6 @@
 package framework
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,15 +8,13 @@ import (
 	"strings"
 	"time"
 
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 )
 
 // Runner provides relevant APIs needed to run tests.
 type Runner struct {
-	context.Context
 	http.Client
 }
 

@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	CRDMETRICS_MAIN_PORT = "CRDMETRICS_MAIN_PORT"
-	CRDMETRICS_SELF_PORT = "CRDMETRICS_SELF_PORT"
+	CRDMetricsMainPort = "CRDMETRICS_MAIN_PORT"
+	CRDMetricsSelfPort = "CRDMETRICS_SELF_PORT"
 )
 
 func TestMain(m *testing.M) {

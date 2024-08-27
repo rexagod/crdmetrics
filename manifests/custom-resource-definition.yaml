@@ -56,13 +56,13 @@ spec:
             description: CRDMetricsResourceSpec is the spec for a CRDMetricsResource
               resource.
             properties:
-              configurationYAML:
-                description: ConfigurationYAML is the crdmetrics configuration that
-                  generates metrics.
+              configuration:
+                description: Configuration is the crdmetrics configuration that generates
+                  metrics.
                 format: string
                 type: string
             required:
-            - configurationYAML
+            - configuration
             type: object
           status:
             description: CRDMetricsResourceStatus is the status for a CRDMetricsResource

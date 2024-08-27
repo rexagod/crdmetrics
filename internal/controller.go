@@ -26,23 +26,6 @@ import (
 	"strconv"
 	"time"
 
-	"golang.org/x/time/rate"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/dynamic"
-
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
-	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog/v2"
-
 	"github.com/google/go-cmp/cmp"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -53,6 +36,21 @@ import (
 	clientset "github.com/rexagod/crdmetrics/pkg/generated/clientset/versioned"
 	crdmetricsscheme "github.com/rexagod/crdmetrics/pkg/generated/clientset/versioned/scheme"
 	informers "github.com/rexagod/crdmetrics/pkg/generated/informers/externalversions"
+	"golang.org/x/time/rate"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
+	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog/v2"
 )
 
 // Controller is the controller implementation for managed resources.
@@ -86,7 +84,13 @@ type Controller struct {
 }
 
 // NewController returns a new sample controller.
-func NewController(ctx context.Context, options *Options, kubeClientset kubernetes.Interface, crdmetricsClientset clientset.Interface, dynamicClientset dynamic.Interface) *Controller {
+func NewController(
+	ctx context.Context,
+	options *Options,
+	kubeClientset kubernetes.Interface,
+	crdmetricsClientset clientset.Interface,
+	dynamicClientset dynamic.Interface,
+) *Controller {
 	logger := klog.FromContext(ctx)
 
 	// Add native resources to the default Kubernetes Scheme so Events can be logged for them.
@@ -95,7 +99,11 @@ func NewController(ctx context.Context, options *Options, kubeClientset kubernet
 	// Initialize the controller.
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartStructuredLogging(0)
-	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeClientset.CoreV1().Events(os.Getenv("EMIT_NAMESPACE") /* emit in the default namespace if none is defined */)})
+	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{
+
+		// Emit events in the default namespace if none is defined.
+		Interface: kubeClientset.CoreV1().Events(os.Getenv("EMIT_NAMESPACE")),
+	})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: version.ControllerName})
 	ratelimiter := workqueue.NewTypedMaxOfRateLimiter(
 		workqueue.NewTypedItemExponentialFailureRateLimiter[[2]string](5*time.Millisecond, 5*time.Minute),
@@ -125,9 +133,19 @@ func NewController(ctx context.Context, options *Options, kubeClientset kubernet
 			AddFunc: func(obj interface{}) {
 				controller.enqueueCRDMetrics(obj, addEvent)
 			},
-			UpdateFunc: func(old, new interface{}) {
-				oldCRDMetrics := old.(*v1alpha1.CRDMetricsResource)
-				newCRDMetrics := new.(*v1alpha1.CRDMetricsResource)
+			UpdateFunc: func(oldI, newI interface{}) {
+				oldCRDMetrics, ok := oldI.(*v1alpha1.CRDMetricsResource)
+				if !ok {
+					logger.Error(stderrors.New("failed to cast object to CRDMetricsResource"), "cannot handle event")
+
+					return
+				}
+				newCRDMetrics, ok := newI.(*v1alpha1.CRDMetricsResource)
+				if !ok {
+					logger.Error(stderrors.New("failed to cast object to CRDMetricsResource"), "cannot handle event")
+
+					return
+				}
 				if oldCRDMetrics.ResourceVersion == newCRDMetrics.ResourceVersion ||
 
 					// NOTE: Don't add to workqueue if the event stemmed from a status update, else this will create a
@@ -137,12 +155,13 @@ func NewController(ctx context.Context, options *Options, kubeClientset kubernet
 					// the event handler.
 					reflect.DeepEqual(oldCRDMetrics.Spec, newCRDMetrics.Spec) {
 					logger.V(10).Info("Skipping event", "[-old +new]", cmp.Diff(oldCRDMetrics, newCRDMetrics))
+
 					return
 				}
 
 				// Queue only for `spec` changes.
-				logger.V(4).Info("Update event", "[-old +new]", cmp.Diff(oldCRDMetrics.Spec.ConfigurationYAML, newCRDMetrics.Spec.ConfigurationYAML))
-				controller.enqueueCRDMetrics(new, updateEvent)
+				logger.V(4).Info("Update event", "[-old +new]", cmp.Diff(oldCRDMetrics.Spec.Configuration, newCRDMetrics.Spec.Configuration))
+				controller.enqueueCRDMetrics(newI, updateEvent)
 			},
 			DeleteFunc: func(obj interface{}) {
 				controller.enqueueCRDMetrics(obj, deleteEvent)
@@ -162,6 +181,7 @@ func (c *Controller) enqueueCRDMetrics(obj interface{}, event eventType) {
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
 		utilruntime.HandleError(err)
+
 		return
 	}
 
@@ -221,9 +241,8 @@ func (c *Controller) Run(ctx context.Context, workers int) error {
 
 	// Launch `workers` amount of goroutines to process the work queue.
 	logger.V(1).Info("Starting workers")
-	for i := 0; i < workers; i++ {
+	for range workers {
 		go wait.UntilWithContext(ctx, func(ctx context.Context) {
-
 			// Nothing will be done if there are no enqueued items. Work-queues are thread-safe.
 			for c.processNextWorkItem(ctx) {
 			}
@@ -276,9 +295,9 @@ func (c *Controller) processNextWorkItem(ctx context.Context) bool {
 		key := objectWithEvent[0]
 		event := objectWithEvent[1]
 		if err := c.syncHandler(ctx, key, event); err != nil {
-
 			// Put the item back on the workqueue to handle any transient errors.
 			c.workqueue.AddRateLimited(objectWithEvent)
+
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
 
@@ -287,10 +306,12 @@ func (c *Controller) processNextWorkItem(ctx context.Context) bool {
 		// after Forget, so we must call it before.
 		c.workqueue.Forget(objectWithEvent)
 		logger.V(4).Info("Synced", "key", key)
+
 		return nil // Do not requeue.
 	}(objectWithEvent)
 	if err != nil {
 		logger.Error(err, "error processing item")
+
 		return true
 	}
 
@@ -306,6 +327,7 @@ func (c *Controller) syncHandler(ctx context.Context, key string, event string) 
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		logger.Error(err, "invalid resource key", "key", key)
+
 		return nil // Do not requeue.
 	}
 
@@ -364,9 +386,11 @@ func (c *Controller) handleObject(ctx context.Context, objectI interface{}, even
 	switch o := object.(type) {
 	case *v1alpha1.CRDMetricsResource:
 		handler := newCRDMetricsHandler(c.kubeclientset, c.crdmetricsClientset, c.dynamicClientset)
+
 		return handler.handleEvent(ctx, c.crdmetricsUIDToStores, event, o, *c.options.TryNoCache)
 	default:
 		logger.Error(stderrors.New("unknown object type"), "cannot handle object")
+
 		return nil // Do not requeue.
 	}
 }

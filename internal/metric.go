@@ -40,9 +40,12 @@ type MetricType struct {
 }
 
 // writeMetricTo writes the given metric to the given strings.Builder.
-func writeMetricTo(s *strings.Builder, g, v, k, resolvedValue string, resolvedLabelKeys, resolvedLabelValues []string) error {
+func writeMetricTo(writer *strings.Builder, g, v, k, resolvedValue string, resolvedLabelKeys, resolvedLabelValues []string) error {
 	if len(resolvedLabelKeys) != len(resolvedLabelValues) {
-		return fmt.Errorf("expected labelKeys %q to be of same length (%d) as the resolved labelValues %q (%d)", resolvedLabelKeys, len(resolvedLabelKeys), resolvedLabelValues, len(resolvedLabelValues))
+		return fmt.Errorf(
+			"expected labelKeys %q to be of same length (%d) as the resolved labelValues %q (%d)",
+			resolvedLabelKeys, len(resolvedLabelKeys), resolvedLabelValues, len(resolvedLabelValues),
+		)
 	}
 
 	// Sort the label keys and values. This preserves order and helps test deterministically.
@@ -55,36 +58,35 @@ func writeMetricTo(s *strings.Builder, g, v, k, resolvedValue string, resolvedLa
 	// Write the metric.
 	if len(resolvedLabelKeys) > 0 {
 		separator := "{"
-		for i := 0; i < len(resolvedLabelKeys); i++ {
-			s.WriteString(separator)
-			s.WriteString(resolvedLabelKeys[i])
-			s.WriteString("=\"")
-			n, err := strings.NewReplacer("\\", `\\`, "\n", `\n`, "\"", `\"`).WriteString(s, resolvedLabelValues[i])
+		for i := range len(resolvedLabelKeys) {
+			writer.WriteString(separator)
+			writer.WriteString(resolvedLabelKeys[i])
+			writer.WriteString("=\"")
+			n, err := strings.NewReplacer("\\", `\\`, "\n", `\n`, "\"", `\"`).WriteString(writer, resolvedLabelValues[i])
 			if err != nil {
 				return fmt.Errorf("error writing metric after %d bytes: %w", n, err)
 			}
-			s.WriteString("\"")
+			writer.WriteString("\"")
 			separator = ","
 		}
-		s.WriteString("}")
+		writer.WriteString("}")
 	}
-	s.WriteByte(' ')
+	writer.WriteByte(' ')
 	metricValueAsFloat, err := strconv.ParseFloat(resolvedValue, 64)
 	if err != nil {
 		return fmt.Errorf("error parsing metric value %q as float64: %w", resolvedValue, err)
 	}
-	n, err := fmt.Fprintf(s, "%f", metricValueAsFloat)
+	n, err := fmt.Fprintf(writer, "%f", metricValueAsFloat)
 	if err != nil {
 		return fmt.Errorf("error writing (float64) metric value after %d bytes: %w", n, err)
 	}
-	s.WriteByte('\n')
+	writer.WriteByte('\n')
 
 	return nil
 }
 
 // sortLabelset sorts the label keys and values while preserving order.
 func sortLabelset(resolvedLabelKeys, resolvedLabelValues []string) {
-
 	// Populate.
 	type labelset struct {
 		labelKey   string
@@ -101,6 +103,7 @@ func sortLabelset(resolvedLabelKeys, resolvedLabelValues []string) {
 		if len(a) == len(b) {
 			return a < b
 		}
+
 		return len(a) < len(b)
 	})
 

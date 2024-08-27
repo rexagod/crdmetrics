@@ -18,28 +18,22 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log/slog"
 	"os"
 
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/klog/v2"
-
-	"k8s.io/client-go/dynamic"
-
+	"github.com/KimMachineGun/automemlimit/memlimit"
 	"github.com/rexagod/crdmetrics/internal"
 	v "github.com/rexagod/crdmetrics/internal/version"
 	clientset "github.com/rexagod/crdmetrics/pkg/generated/clientset/versioned"
 	"github.com/rexagod/crdmetrics/pkg/signals"
-
 	"go.uber.org/automaxprocs/maxprocs"
-
-	"github.com/KimMachineGun/automemlimit/memlimit"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/klog/v2"
 )
 
 func main() {
-
 	// Set up contextual logging.
 	// Set up signals, so we can handle the shutdown signal gracefully.
 	ctx := klog.NewContext(signals.SetupSignalHandler(), klog.NewKlogr())
@@ -73,7 +67,7 @@ func main() {
 
 	// Quit if only version flag is set.
 	if *options.Version && flag.NFlag() == 1 {
-		fmt.Println(v.Version())
+		logger.Info("Version", "version", v.Version)
 		os.Exit(0)
 	}
 

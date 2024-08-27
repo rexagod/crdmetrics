@@ -78,8 +78,8 @@ type CRDMetricsResourceSpec struct {
 	// +kubebuilder:validation:Required
 	// +required
 
-	// ConfigurationYAML is the crdmetrics configuration that generates metrics.
-	ConfigurationYAML string `json:"configurationYAML"`
+	// Configuration is the crdmetrics configuration that generates metrics.
+	Configuration string `json:"configuration"`
 }
 
 // +kubebuilder:validation:Optional
@@ -102,7 +102,6 @@ func (status *CRDMetricsResourceStatus) Set(
 	resource *CRDMetricsResource,
 	condition metav1.Condition,
 ) {
-
 	// Prefix condition messages with consistent hints.
 	var message, reason string
 	conditionTypeNumeric := slices.Index(ConditionType, condition.Type)
@@ -125,6 +124,7 @@ func (status *CRDMetricsResourceStatus) Set(
 		if existingCondition.Type == condition.Type {
 			// Update the existing condition.
 			status.Conditions[i] = condition
+
 			return
 		}
 	}
