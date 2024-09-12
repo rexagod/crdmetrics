@@ -50,6 +50,6 @@ In the order of priority:
 - [ ] Make `CRDMetricsResource` namespaced-scope. This allows for:
   - per-namespace configuration (separate configurations between teams), and,
   - garbage collection, since currently the namespace-scoped deployment manages its cluster-scoped resources, which are not garbage collect-able in Kubernetes by design.
-- [ ] See if cardinality thresholds can be levied in horizontally-scaled setups.
+- [ ] Meta-metrics for metric generation failures.
 
 ###### [License](./LICENSE)
